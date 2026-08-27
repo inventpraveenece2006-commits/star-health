@@ -452,8 +452,10 @@ function saveLogEntry() {
 }
 
 // ── AI Chat (Groq / Llama 3) ───────────────────
+const DEFAULT_GROQ_KEY = "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";
+
 function getApiKey() {
-  return localStorage.getItem("star_groq_key") || "";
+  return localStorage.getItem("star_groq_key") || DEFAULT_GROQ_KEY;
 }
 
 function getAIModel() {
@@ -963,7 +965,7 @@ function saveAIConfig() {
 }
 
 function loadAIConfig() {
-  const key = localStorage.getItem("star_groq_key") || "";
+  const key = localStorage.getItem("star_groq_key") || DEFAULT_GROQ_KEY;
   const m = localStorage.getItem("star_groq_model");
   const model = (!m || m === "llama-3.3-70b-versatile" || m === "llama-3.1-8b-instant" || m === "llama-3.2-3b-preview")
     ? "openai/gpt-oss-20b"
