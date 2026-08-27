@@ -457,7 +457,9 @@ function getApiKey() {
 }
 
 function getAIModel() {
-  return localStorage.getItem("star_groq_model") || "llama-3.3-70b-versatile";
+  const m = localStorage.getItem("star_groq_model");
+  if (m === "llama-3.1-8b-instant") return "llama-3.3-70b-versatile";
+  return m || "llama-3.3-70b-versatile";
 }
 
 function getSystemPrompt() {
@@ -961,7 +963,9 @@ function saveAIConfig() {
 
 function loadAIConfig() {
   const key = localStorage.getItem("star_groq_key") || "";
-  const model = localStorage.getItem("star_groq_model") || "llama-3.3-70b-versatile";
+  const model = (localStorage.getItem("star_groq_model") === "llama-3.1-8b-instant")
+    ? "llama-3.3-70b-versatile"
+    : (localStorage.getItem("star_groq_model") || "llama-3.3-70b-versatile");
   const keyInput = document.getElementById("groqApiKey");
   const modelSelect = document.getElementById("groqModel");
   if (keyInput) keyInput.value = key;
@@ -1041,8 +1045,17 @@ function saveFirebaseConfig() {
 
 function loadFirebaseConfig() {
   const raw = localStorage.getItem("star_firebase_config");
-  if (!raw) return null;
-  try { return JSON.parse(raw); } catch { return null; }
+  if (raw) {
+    try { return JSON.parse(raw); } catch {}
+  }
+  return {
+    apiKey: "AIzaSyAmjuBhgJE0dsytOjpPSvGrySZgqIThEt4",
+    authDomain: "musicon-cfe95.firebaseapp.com",
+    projectId: "musicon-cfe95",
+    storageBucket: "musicon-cfe95.firebasestorage.app",
+    messagingSenderId: "487117999956",
+    appId: "1:487117999956:web:886a94ec11ce17b87302c1"
+  };
 }
 
 function loadFirebaseSettings() {
