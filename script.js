@@ -458,8 +458,8 @@ function getApiKey() {
 
 function getAIModel() {
   const m = localStorage.getItem("star_groq_model");
-  if (m === "llama-3.1-8b-instant") return "llama-3.3-70b-versatile";
-  return m || "llama-3.3-70b-versatile";
+  if (!m || m === "llama-3.3-70b-versatile" || m === "llama-3.1-8b-instant" || m === "llama-3.2-3b-preview") return "openai/gpt-oss-20b";
+  return m;
 }
 
 function getSystemPrompt() {
@@ -786,6 +786,7 @@ const StarVision = (() => {
 let uploadedImageData = null;
 let uploadedFile = null;
 let lastAnalysisResult = null;
+let postImageData = null;
 
 function handleDragOver(e) {
   e.preventDefault();
@@ -963,9 +964,10 @@ function saveAIConfig() {
 
 function loadAIConfig() {
   const key = localStorage.getItem("star_groq_key") || "";
-  const model = (localStorage.getItem("star_groq_model") === "llama-3.1-8b-instant")
-    ? "llama-3.3-70b-versatile"
-    : (localStorage.getItem("star_groq_model") || "llama-3.3-70b-versatile");
+  const m = localStorage.getItem("star_groq_model");
+  const model = (!m || m === "llama-3.3-70b-versatile" || m === "llama-3.1-8b-instant" || m === "llama-3.2-3b-preview")
+    ? "openai/gpt-oss-20b"
+    : m;
   const keyInput = document.getElementById("groqApiKey");
   const modelSelect = document.getElementById("groqModel");
   if (keyInput) keyInput.value = key;
@@ -1153,8 +1155,14 @@ function renderPosts(posts) {
             <strong>${escapeHtml(p.authorName || "User")}</strong>
             ${catTag}
             <span class="post-time">${timeAgo(p.createdAt)}</span>
+            ${p.authorName === currentUser.name ? `
+              <span class="post-actions">
+                <button onclick="editPost('${p.id}', this)" title="Edit">✏️</button>
+                <button onclick="deletePost('${p.id}')" title="Delete">🗑️</button>
+              </span>` : ""}
           </div>
-          <p>${escapeHtml(p.text || "")}</p>
+          <p id="postText-${p.id}">${escapeHtml(p.text || "")}</p>
+          ${p.image ? `<img src="${escapeHtml(p.image)}" style="max-width:100%;max-height:280px;border-radius:10px;object-fit:cover;margin-top:8px;" alt="post image">` : ""}
           <div class="post-footer">
             <button onclick="toggleComments('${p.id}')">💬 ${(p.commentCount || 0)}</button>
             <button onclick="toggleLike('${p.id}', ${JSON.stringify(p.likes || [])})" style="${liked ? "color:var(--red);border-color:var(--red)" : ""}">❤ ${(p.likes || []).length}</button>
@@ -1169,6 +1177,25 @@ function renderPosts(posts) {
         </div>
       </div>`;
   }).join("");
+}
+
+function handlePostImage(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    postImageData = e.target.result;
+    document.getElementById("postPreviewImg").src = postImageData;
+    document.getElementById("postImagePreview").style.display = "block";
+  };
+  reader.readAsDataURL(file);
+  input.value = "";
+}
+
+function removePostImage() {
+  postImageData = null;
+  document.getElementById("postImagePreview").style.display = "none";
+  document.getElementById("postImageInput").value = "";
 }
 
 async function createPost() {
@@ -1189,10 +1216,71 @@ async function createPost() {
       category: category,
       likes: [],
       commentCount: 0,
+      image: postImageData || null,
       createdAt: serverTimestamp()
     });
     document.getElementById("newPostText").value = "";
+    postImageData = null;
+    document.getElementById("postImagePreview").style.display = "none";
     showToast("Post published");
+  } catch (err) {
+    showToast("Error: " + err.message);
+  }
+}
+
+function editPost(postId, btn) {
+  const el = document.getElementById("postText-" + postId);
+  if (!el) return;
+  const oldText = el.textContent;
+  const wrapper = el.parentElement.querySelector('.post-editing');
+  if (!wrapper) {
+    const parser = new DOMParser();
+    const html = `
+      <div class="post-editing" style="margin:8px 0;">
+        <textarea id="editPostText-${postId}" rows="2" style="width:100%;">${escapeHtml(oldText)}</textarea>
+        <button class="btn-primary small" onclick="savePostEdit('${postId}')">Save</button>
+        <button class="btn-ghost small" onclick="cancelPostEdit('${postId}')">Cancel</button>
+      </div>`;
+    el.insertAdjacentHTML('afterend', html);
+  }
+}
+
+async function savePostEdit(postId) {
+  const el = document.getElementById("editPostText-" + postId);
+  if (!el) return;
+  const text = el.value.trim();
+  if (!text) return;
+  if (!db || !window.firebaseModules) return;
+  const { doc, updateDoc } = window.firebaseModules;
+  try {
+    await updateDoc(doc(db, "posts", postId), { text: text });
+    const txtEl = document.getElementById("postText-" + postId);
+    if (txtEl) txtEl.textContent = text;
+    const editor = txtEl.parentElement.querySelector('.post-editing');
+    if (editor) editor.remove();
+    showToast("Post updated");
+  } catch (err) {
+    showToast("Error: " + err.message);
+  }
+}
+
+function cancelPostEdit(postId) {
+  const txtEl = document.getElementById("postText-" + postId);
+  if (txtEl) {
+    const editor = txtEl.parentElement.querySelector('.post-editing');
+    if (editor) editor.remove();
+  }
+}
+
+async function deletePost(postId) {
+  if (!db || !window.firebaseModules) return;
+  if (!confirm("Delete this post?")) return;
+  const { deleteDoc, doc, getDocs, collection } = window.firebaseModules;
+  try {
+    const snap = await getDocs(collection(db, "posts", postId, "comments"));
+    for (const c of snap.docs) await deleteDoc(c.ref);
+    await deleteDoc(doc(db, "posts", postId));
+    showToast("Post deleted");
   } catch (err) {
     showToast("Error: " + err.message);
   }
@@ -1237,20 +1325,82 @@ async function loadComments(postId) {
     }
     list.innerHTML = snap.docs.map(d => {
       const c = d.data();
+      const cid = d.id;
       const initial = (c.authorName || "U").charAt(0).toUpperCase();
       const color = getAvatarColor(c.authorName || "User");
       return `
-        <div class="comment-item">
+        <div class="comment-item" id="commentItem-${cid}">
           <div class="comment-avatar" style="background:${color}">${initial}</div>
           <div class="comment-body">
             <strong>${escapeHtml(c.authorName || "User")}</strong>
-            <p>${escapeHtml(c.text || "")}</p>
+            <p id="commentText-${cid}">${escapeHtml(c.text || "")}</p>
             <span class="comment-time">${timeAgo(c.createdAt)}</span>
+            ${c.authorName === currentUser.name ? `
+              <span class="comment-actions">
+                <button onclick="editComment('${postId}','${cid}')" title="Edit">✏️</button>
+                <button onclick="deleteComment('${postId}','${cid}')" title="Delete">🗑️</button>
+              </span>` : ""}
           </div>
         </div>`;
     }).join("");
   } catch (err) {
     list.innerHTML = '<p style="font-size:0.8rem;color:var(--red);">Failed to load comments</p>';
+  }
+}
+
+function editComment(postId, commentId) {
+  const el = document.getElementById("commentText-" + commentId);
+  if (!el) return;
+  const oldText = el.textContent;
+  const parser = new DOMParser();
+  const html = `
+    <div class="comment-editing" style="margin:6px 0;">
+      <textarea id="editCommentText-${commentId}" rows="2" style="width:100%;">${escapeHtml(oldText)}</textarea>
+      <button class="btn-primary small" onclick="saveCommentEdit('${postId}','${commentId}')">Save</button>
+      <button class="btn-ghost small" onclick="cancelCommentEdit('${commentId}')">Cancel</button>
+    </div>`;
+  el.insertAdjacentHTML('afterend', html);
+}
+
+async function saveCommentEdit(postId, commentId) {
+  const el = document.getElementById("editCommentText-" + commentId);
+  if (!el) return;
+  const text = el.value.trim();
+  if (!text) return;
+  if (!db || !window.firebaseModules) return;
+  const { doc, updateDoc } = window.firebaseModules;
+  try {
+    await updateDoc(doc(db, "posts", postId, "comments", commentId), { text: text });
+    const txtEl = document.getElementById("commentText-" + commentId);
+    if (txtEl) txtEl.textContent = text;
+    const editor = txtEl.parentElement.querySelector('.comment-editing');
+    if (editor) editor.remove();
+    showToast("Comment updated");
+  } catch (err) {
+    showToast("Error: " + err.message);
+  }
+}
+
+function cancelCommentEdit(commentId) {
+  const txtEl = document.getElementById("commentText-" + commentId);
+  if (txtEl) {
+    const editor = txtEl.parentElement.querySelector('.comment-editing');
+    if (editor) editor.remove();
+  }
+}
+
+async function deleteComment(postId, commentId) {
+  if (!db || !window.firebaseModules) return;
+  if (!confirm("Delete this comment?")) return;
+  const { deleteDoc, doc, updateDoc, increment } = window.firebaseModules;
+  try {
+    await deleteDoc(doc(db, "posts", postId, "comments", commentId));
+    await updateDoc(doc(db, "posts", postId), { commentCount: increment(-1) });
+    const item = document.getElementById("commentItem-" + commentId);
+    if (item) item.remove();
+    showToast("Comment deleted");
+  } catch (err) {
+    showToast("Error: " + err.message);
   }
 }
 
