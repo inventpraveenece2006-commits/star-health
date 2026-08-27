@@ -340,7 +340,10 @@
 
           <div id="imagePreviewCard" style="display:none;margin-top:16px;" class="analysis-card">
             <h4 class="analysis-card-title">Uploaded Image</h4>
-            <img id="previewImg" style="width:100%;border-radius:10px;max-height:250px;object-fit:cover" alt="Preview">
+            <div style="position:relative;" onclick="toggleImageBlur()">
+              <img id="previewImg" style="width:100%;border-radius:10px;max-height:250px;object-fit:cover;filter:blur(24px);transition:filter 0.3s;" alt="Preview">
+              <div id="previewBlurOverlay" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.35);border-radius:10px;color:white;font-size:13px;font-weight:600;text-align:center;padding:10px;">👁 Tap to view</div>
+            </div>
             <div class="analysis-btn-row">
               <button class="btn-primary" id="analyzeBtn" onclick="runAIAnalysis()">🤖 Analyze with AI</button>
               <button class="btn-outline" onclick="resetAnalysis()">Reset</button>

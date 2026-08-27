@@ -832,6 +832,23 @@ function resetAnalysis() {
   document.getElementById("aiThinking").style.display = "none";
   document.getElementById("placeholderCard").style.display = "block";
   document.getElementById("fileInput").value = "";
+  document.getElementById("previewImg").style.filter = "blur(24px)";
+  const ov = document.getElementById("previewBlurOverlay");
+  if (ov) ov.style.display = "flex";
+}
+
+function toggleImageBlur() {
+  const img = document.getElementById("previewImg");
+  const ov = document.getElementById("previewBlurOverlay");
+  if (!img) return;
+  const blurred = img.style.filter === "none" || img.style.filter === "";
+  if (blurred) {
+    img.style.filter = "blur(0px)";
+    if (ov) ov.style.display = "none";
+  } else {
+    img.style.filter = "blur(24px)";
+    if (ov) ov.style.display = "flex";
+  }
 }
 
 async function runAIAnalysis() {
