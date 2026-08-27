@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>STAR Health System</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, getDocs, query, orderBy, doc, updateDoc, arrayUnion, arrayRemove, onSnapshot, serverTimestamp, increment, deleteDoc, where, getDoc } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
+
+    window.firebaseModules = { initializeApp, getFirestore, collection, addDoc, getDocs, query, orderBy, doc, updateDoc, arrayUnion, arrayRemove, onSnapshot, serverTimestamp, increment, deleteDoc, where, getDoc, getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, updateProfile };
+  </script>
+</head>
+<body>
+
+<!-- CINEMATIC INTRO -->
+<div id="intro" onclick="skipIntro()">
+  <div class="intro-word" aria-label="STAR">
+    <span>S</span><span>T</span><span>A</span><span>R</span>
+  </div>
+  <div class="intro-line"></div>
+  <p class="intro-tagline">Sanitation Technology With Automated Regulation</p>
+</div>
+
+<!-- AUTH SECTION -->
+<div id="auth">
+  <div class="auth-bg">
+    <div class="auth-orb orb1"></div>
+    <div class="auth-orb orb2"></div>
+    <div class="auth-orb orb3"></div>
+  </div>
+
+  <div class="auth-panel">
+    <div class="auth-brand">
+      <div class="brand-icon">
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+          <path d="M14 2L26 8V20L14 26L2 20V8L14 2Z" stroke="white" stroke-width="1.5" fill="none"/>
+          <path d="M14 8V20M8 14H20" stroke="white" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <span class="brand-name">STAR</span>
+    </div>
+
+    <!-- LOGIN CARD -->
+    <div class="auth-card" id="loginCard">
+      <div class="auth-card-header">
+        <h1>Welcome back</h1>
+        <p>Sign in to your health dashboard</p>
+      </div>
+      <div id="loginError" class="auth-error" style="display:none;"></div>
+      <div class="form-group">
+        <label>Email address</label>
+        <input type="email" id="loginEmail" placeholder="you@example.com" autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password">
+        <a href="#" class="forgot-link">Forgot password?</a>
+      </div>
+      <button class="btn-primary" id="loginBtn" onclick="handleLogin()">
+        <span>Sign in</span>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8H13M9 4L13 8L9 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <p class="auth-switch">Don't have an account? <a onclick="showRegister()">Create one</a></p>
+    </div>
+
+    <!-- REGISTER CARD -->
+    <div class="auth-card" id="registerCard" style="display:none;">
+      <div class="auth-card-header">
+        <h1>Create account</h1>
+        <p>Start monitoring your health today</p>
+      </div>
+      <div id="registerError" class="auth-error" style="display:none;"></div>
+      <div class="form-group">
+        <label>Full name</label>
+        <input type="text" id="regName" placeholder="Alex Johnson">
+      </div>
+      <div class="form-group">
+        <label>Email address</label>
+        <input type="email" id="regEmail" placeholder="you@example.com">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="regPassword" placeholder="Create a strong password">
+      </div>
+      <button class="btn-primary" id="registerBtn" onclick="handleRegister()">
+        <span>Create account</span>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8H13M9 4L13 8L9 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <p class="auth-switch">Already have an account? <a onclick="showLogin()">Sign in</a></p>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app" style="display:none;">
+
+  <!-- TOP NAV -->
+  <header class="topnav">
+    <div class="topnav-brand">
+      <div class="brand-icon small">
+        <svg width="18" height="18" viewBox="0 0 28 28" fill="none">
+          <path d="M14 2L26 8V20L14 26L2 20V8L14 2Z" stroke="white" stroke-width="1.5" fill="none"/>
+          <path d="M14 8V20M8 14H20" stroke="white" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <span>STAR</span>
+    </div>
+
+    <nav class="topnav-links">
+      <div class="nav-item active" data-page="dashboard" onclick="showPage('dashboard', this)">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="2" y="2" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="10" y="2" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="10" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="1.5"/><rect x="10" y="10" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="1.5"/></svg>
+        <span>Dashboard</span>
+      </div>
+      <div class="nav-item" data-page="analysis" onclick="showPage('analysis', this)">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M4 2V16M4 8L8 5L11 7L16 3M4 13L8 10L11 12L16 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Analysis</span>
+      </div>
+      <div class="nav-item" data-page="diary" onclick="showPage('diary', this)">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M3 3H15V15H3V3Z" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M6 7H12M6 10H10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span>Health Diary</span>
+      </div>
+      <div class="nav-item" data-page="ai" onclick="showPage('ai', this)">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="6.5" stroke="currentColor" stroke-width="1.5"/><path d="M6 9C6 7.34 7.34 6 9 6C10.66 6 12 7.34 12 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="9" cy="11" r="1" fill="currentColor"/></svg>
+        <span>AI Assistant</span>
+        <div class="nav-badge">AI</div>
+      </div>
+      <div class="nav-item" data-page="community" onclick="showPage('community', this)">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="7" cy="7" r="3" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="7" r="2" stroke="currentColor" stroke-width="1.5"/><path d="M1 15C1 12.79 3.24 11 6 11H8C10.76 11 13 12.79 13 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M14 11C15.66 11 17 12.34 17 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span>Community</span>
+        <div class="nav-dot"></div>
+      </div>
+      <div class="nav-item" data-page="settings" onclick="showPage('settings', this)">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 11.5C10.38 11.5 11.5 10.38 11.5 9C11.5 7.62 10.38 6.5 9 6.5C7.62 6.5 6.5 7.62 6.5 9C6.5 10.38 7.62 11.5 9 11.5Z" stroke="currentColor" stroke-width="1.5"/><path d="M14.5 9C14.5 8.72 14.48 8.44 14.44 8.17L16 6.85L14.5 4.15L12.59 4.73C12.18 4.42 11.73 4.16 11.24 3.97L10.85 2H7.15L6.76 3.97C6.27 4.16 5.82 4.42 5.41 4.73L3.5 4.15L2 6.85L3.56 8.17C3.52 8.44 3.5 8.72 3.5 9C3.5 9.28 3.52 9.56 3.56 9.83L2 11.15L3.5 13.85L5.41 13.27C5.82 13.58 6.27 13.84 6.76 14.03L7.15 16H10.85L11.24 14.03C11.73 13.84 12.18 13.58 12.59 13.27L14.5 13.85L16 11.15L14.44 9.83C14.48 9.56 14.5 9.28 14.5 9Z" stroke="currentColor" stroke-width="1.5"/></svg>
+        <span>Settings</span>
+      </div>
+    </nav>
+
+    <div class="topnav-actions">
+      <div class="date-chip">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="2" width="12" height="11" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M1 5H13" stroke="currentColor" stroke-width="1.2"/><path d="M4 1V3M10 1V3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        <span id="currentDate"></span>
+      </div>
+      <div class="notification-btn">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 2C6.24 2 4 4.24 4 7V11L2 13H16L14 11V7C14 4.24 11.76 2 9 2Z" stroke="currentColor" stroke-width="1.5"/><path d="M7 13C7 14.1 7.9 15 9 15C10.1 15 11 14.1 11 13" stroke="currentColor" stroke-width="1.5"/></svg>
+        <div class="notif-dot"></div>
+      </div>
+      <div class="user-chip" onclick="logout()" title="Sign out">
+        <div class="avatar small" id="sidebarAvatar">A</div>
+        <div class="user-info">
+          <span id="sidebarName">Alex Johnson</span>
+          <span class="user-status">● Active</span>
+        </div>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 3L9 7L5 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+    </div>
+  </header>
+
+  <!-- CONTENT -->
+  <div class="content">
+
+    <div class="title-strip">
+      <h2 id="pageTitle">Dashboard</h2>
+      <p id="pageSubtitle" class="page-subtitle">Overview of your health metrics</p>
+    </div>
+
+    <!-- DASHBOARD PAGE -->
+    <div id="dashboard" class="page active-page">
+      <div class="stats-grid">
+        <div class="stat-card" data-color="blue">
+          <div class="stat-icon blue">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 3C10 3 5 8 5 12C5 14.76 7.24 17 10 17C12.76 17 15 14.76 15 12C15 8 10 3 10 3Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="stat-body">
+            <span class="stat-label">Hydration</span>
+            <span class="stat-value">79<small>%</small></span>
+            <div class="stat-bar"><div class="stat-fill blue" style="width:79%"></div></div>
+          </div>
+          <div class="stat-trend up">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 9L6 4L10 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            +3%
+          </div>
+        </div>
+
+        <div class="stat-card" data-color="green">
+          <div class="stat-icon green">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M5 10H8L10 5L13 15L15 10H18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="stat-body">
+            <span class="stat-label">Glucose</span>
+            <span class="stat-value">94<small>mg/dL</small></span>
+            <div class="stat-bar"><div class="stat-fill green" style="width:65%"></div></div>
+          </div>
+          <div class="stat-trend up">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 9L6 4L10 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Normal
+          </div>
+        </div>
+
+        <div class="stat-card" data-color="orange">
+          <div class="stat-icon orange">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M10 7V13M7 10H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </div>
+          <div class="stat-body">
+            <span class="stat-label">Protein</span>
+            <span class="stat-value">12<small>mg/dL</small></span>
+            <div class="stat-bar"><div class="stat-fill orange" style="width:55%"></div></div>
+          </div>
+          <div class="stat-trend down">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 4L6 9L10 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            -1%
+          </div>
+        </div>
+
+        <div class="stat-card" data-color="purple">
+          <div class="stat-icon purple">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 10C3 6.13 6.13 3 10 3C13.87 3 17 6.13 17 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M10 10L14 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10" cy="10" r="1.5" fill="currentColor"/></svg>
+          </div>
+          <div class="stat-body">
+            <span class="stat-label">pH Level</span>
+            <span class="stat-value">7.2</span>
+            <div class="stat-bar"><div class="stat-fill purple" style="width:72%"></div></div>
+          </div>
+          <div class="stat-trend up">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 9L6 4L10 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Balanced
+          </div>
+        </div>
+      </div>
+
+      <div class="dashboard-row">
+        <div class="dash-panel main-chart-panel">
+          <div class="panel-header">
+            <div>
+              <h3>Weekly Trend</h3>
+              <p>Biomarker overview — last 7 days</p>
+            </div>
+            <div class="chart-toggle">
+              <button class="chart-btn active" onclick="switchDashChart('line', this)">Line</button>
+              <button class="chart-btn" onclick="switchDashChart('bar', this)">Bar</button>
+            </div>
+          </div>
+          <canvas id="dashboardChart" height="100"></canvas>
+        </div>
+
+        <div class="dash-panel side-panel">
+          <div class="panel-header"><h3>Health Score</h3></div>
+          <div class="score-circle-wrap">
+            <div class="score-circle">
+              <canvas id="scoreChart" width="140" height="140"></canvas>
+              <div class="score-text">
+                <span class="score-num">87</span>
+                <span class="score-label">/ 100</span>
+              </div>
+            </div>
+          </div>
+          <div class="score-breakdown">
+            <div class="score-row"><span>Hydration</span><div class="mini-bar"><div style="width:79%;background:var(--cyan)"></div></div><span>79</span></div>
+            <div class="score-row"><span>Glucose</span><div class="mini-bar"><div style="width:65%;background:var(--green)"></div></div><span>94</span></div>
+            <div class="score-row"><span>Protein</span><div class="mini-bar"><div style="width:55%;background:var(--orange)"></div></div><span>12</span></div>
+            <div class="score-row"><span>pH</span><div class="mini-bar"><div style="width:72%;background:var(--purple)"></div></div><span>7.2</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="dashboard-row">
+        <div class="dash-panel">
+          <div class="panel-header"><h3>Recent Activity</h3></div>
+          <div class="activity-list">
+            <div class="activity-item">
+              <div class="activity-dot blue"></div>
+              <div class="activity-body"><p>Hydration logged</p><span>Today, 8:32 AM</span></div>
+              <div class="activity-val">2.1L</div>
+            </div>
+            <div class="activity-item">
+              <div class="activity-dot green"></div>
+              <div class="activity-body"><p>Blood glucose check</p><span>Today, 7:15 AM</span></div>
+              <div class="activity-val">94</div>
+            </div>
+            <div class="activity-item">
+              <div class="activity-dot orange"></div>
+              <div class="activity-body"><p>Protein intake recorded</p><span>Yesterday, 9:00 PM</span></div>
+              <div class="activity-val">52g</div>
+            </div>
+            <div class="activity-item">
+              <div class="activity-dot purple"></div>
+              <div class="activity-body"><p>pH test completed</p><span>Yesterday, 6:45 PM</span></div>
+              <div class="activity-val">7.2</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="dash-panel">
+          <div class="panel-header"><h3>AI Insights</h3><div class="ai-badge">AI</div></div>
+          <div class="insights-list">
+            <div class="insight-item">
+              <div class="insight-icon success">✓</div>
+              <p>Glucose is within the healthy range (70–100 mg/dL).</p>
+            </div>
+            <div class="insight-item">
+              <div class="insight-icon warning">!</div>
+              <p>Protein levels slightly low — consider increasing lean protein intake.</p>
+            </div>
+            <div class="insight-item">
+              <div class="insight-icon success">✓</div>
+              <p>pH balance is excellent. Keep up current diet.</p>
+            </div>
+          </div>
+          <button class="btn-outline" onclick="showPage('ai')">
+            Ask AI Assistant
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 7H11M7 3L11 7L7 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ANALYSIS PAGE -->
+    <div id="analysis" class="page" style="display:none;">
+      <div class="analysis-grid">
+        <div>
+          <div class="upload-zone" id="uploadZone"
+            onclick="document.getElementById('fileInput').click()"
+            ondragover="handleDragOver(event)"
+            ondragleave="handleDragLeave(event)"
+            ondrop="handleDrop(event)">
+            <div class="upload-icon">⬆</div>
+            <h3>Upload Sample Image</h3>
+            <p>Drag & drop or click to select<br>Supports JPG, PNG, WEBP</p>
+            <button class="btn-primary" onclick="event.stopPropagation();document.getElementById('fileInput').click()" style="margin-top:20px">
+              Select Image
+            </button>
+            <input type="file" id="fileInput" accept="image/*" style="display:none" onchange="handleFileSelect(this)">
+          </div>
+
+          <div id="imagePreviewCard" style="display:none;margin-top:16px;" class="analysis-card">
+            <h4 class="analysis-card-title">Uploaded Image</h4>
+            <img id="previewImg" style="width:100%;border-radius:10px;max-height:250px;object-fit:cover" alt="Preview">
+            <div class="analysis-btn-row">
+              <button class="btn-primary" id="analyzeBtn" onclick="runAIAnalysis()">🤖 Analyze with AI</button>
+              <button class="btn-outline" onclick="resetAnalysis()">Reset</button>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div id="aiThinking" style="display:none;" class="analysis-card ai-thinking">
+            <div class="thinking-spinner"></div>
+            <h3 style="font-weight:700;margin-bottom:8px">Analyzing Image...</h3>
+            <p style="color:var(--text-3);font-size:14px;text-align:center">Scanning color profile, texture and risk markers — running fully offline on your device.</p>
+          </div>
+
+          <div id="analysisResult" class="analysis-card analysis-result" style="display:none;">
+            <div class="result-header" id="resultHeader">
+              <div class="result-icon" id="resultIcon">✅</div>
+              <div>
+                <div class="result-title" id="resultTitle">Normal</div>
+                <div class="result-subtitle" id="resultSubtitle">Healthy bowel movement detected</div>
+              </div>
+            </div>
+
+            <div style="margin-bottom:20px">
+              <div class="confidence-row">
+                <span>Confidence Score</span>
+                <span id="confidenceText" class="confidence-value">—</span>
+              </div>
+              <div class="confidence-track">
+                <div id="confidenceBar" class="confidence-fill"></div>
+              </div>
+            </div>
+
+            <h4 class="analysis-card-title">AI Recommendations</h4>
+            <div class="recommendations-list" id="recList"></div>
+
+            <div id="resultMeta" class="result-meta" style="display:none;"></div>
+            <p id="resultDisclaimer" class="analysis-disclaimer" style="display:none;"></p>
+
+            <button class="btn-primary" id="downloadReportBtn" style="width:100%;margin-top:16px;" onclick="downloadReport()">
+              📥 Download Report
+            </button>
+          </div>
+
+          <div id="placeholderCard" class="analysis-card">
+            <div style="text-align:center;padding:32px;color:var(--text-3)">
+              <div style="font-size:48px;margin-bottom:12px">🔬</div>
+              <h3 style="font-weight:700;margin-bottom:8px">Ready for Analysis</h3>
+              <p style="font-size:14px">Upload an image on the left to run AI-powered condition detection.</p>
+              <div style="margin-top:20px;padding:14px;background:var(--surface2);border-radius:10px;font-size:12px;color:var(--text-3);text-align:left">
+                <strong>Note:</strong> Analysis runs entirely in your browser — the engine reads the actual pixels of your image and classifies them into 4 stool types. Your image never leaves your device.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DIARY PAGE -->
+    <div id="diary" class="page" style="display:none;">
+      <div class="diary-controls">
+        <div class="week-nav">
+          <button class="icon-btn" onclick="changeWeek(-1)">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8L10 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <span id="weekLabel">This Week</span>
+          <button class="icon-btn" onclick="changeWeek(1)">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 3L11 8L6 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+        <div class="diary-metric-toggle">
+          <button class="metric-btn active" onclick="filterDiary('all', this)">All</button>
+          <button class="metric-btn" onclick="filterDiary('hydration', this)">Hydration</button>
+          <button class="metric-btn" onclick="filterDiary('glucose', this)">Glucose</button>
+          <button class="metric-btn" onclick="filterDiary('protein', this)">Protein</button>
+          <button class="metric-btn" onclick="filterDiary('ph', this)">pH</button>
+        </div>
+      </div>
+
+      <div class="diary-chart-panel">
+        <canvas id="biomarkerChart" height="80"></canvas>
+      </div>
+
+      <div class="diary-log-header">
+        <h3>Daily Entries</h3>
+        <button class="btn-primary small" onclick="openLogModal()">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2V12M2 7H12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          Log Entry
+        </button>
+      </div>
+
+      <div class="diary-entries" id="diaryEntries">
+        <div class="diary-entry">
+          <div class="entry-day">
+            <span class="day-name">Mon</span>
+            <span class="day-num">18</span>
+          </div>
+          <div class="entry-metrics">
+            <div class="entry-metric blue"><span>Hydration</span><strong>75%</strong></div>
+            <div class="entry-metric green"><span>Glucose</span><strong>90 mg/dL</strong></div>
+            <div class="entry-metric orange"><span>Protein</span><strong>10 mg/dL</strong></div>
+            <div class="entry-metric purple"><span>pH</span><strong>7.1</strong></div>
+          </div>
+          <div class="entry-note">Felt energized. Drank extra water.</div>
+          <div class="entry-status good">Good</div>
+        </div>
+
+        <div class="diary-entry">
+          <div class="entry-day">
+            <span class="day-name">Tue</span>
+            <span class="day-num">19</span>
+          </div>
+          <div class="entry-metrics">
+            <div class="entry-metric blue"><span>Hydration</span><strong>80%</strong></div>
+            <div class="entry-metric green"><span>Glucose</span><strong>95 mg/dL</strong></div>
+            <div class="entry-metric orange"><span>Protein</span><strong>11 mg/dL</strong></div>
+            <div class="entry-metric purple"><span>pH</span><strong>7.2</strong></div>
+          </div>
+          <div class="entry-note">Slight headache — took extra rest.</div>
+          <div class="entry-status ok">Fair</div>
+        </div>
+
+        <div class="diary-entry">
+          <div class="entry-day">
+            <span class="day-name">Wed</span>
+            <span class="day-num">20</span>
+          </div>
+          <div class="entry-metrics">
+            <div class="entry-metric blue"><span>Hydration</span><strong>70%</strong></div>
+            <div class="entry-metric green"><span>Glucose</span><strong>88 mg/dL</strong></div>
+            <div class="entry-metric orange"><span>Protein</span><strong>14 mg/dL</strong></div>
+            <div class="entry-metric purple"><span>pH</span><strong>7.0</strong></div>
+          </div>
+          <div class="entry-note">Low water intake due to travel.</div>
+          <div class="entry-status bad">Low</div>
+        </div>
+      </div>
+
+      <!-- LOG MODAL -->
+      <div class="modal-overlay" id="logModal" style="display:none;">
+        <div class="modal">
+          <div class="modal-header">
+            <h3>Log Entry</h3>
+            <button class="icon-btn" onclick="closeLogModal()">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3L13 13M13 3L3 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label>Hydration (%)</label>
+              <input type="number" id="logHydration" placeholder="e.g. 80" min="0" max="100">
+            </div>
+            <div class="form-group">
+              <label>Glucose (mg/dL)</label>
+              <input type="number" id="logGlucose" placeholder="e.g. 95">
+            </div>
+            <div class="form-group">
+              <label>Protein (mg/dL)</label>
+              <input type="number" id="logProtein" placeholder="e.g. 12">
+            </div>
+            <div class="form-group">
+              <label>pH Level</label>
+              <input type="number" id="logPH" placeholder="e.g. 7.2" step="0.1">
+            </div>
+            <div class="form-group">
+              <label>Notes</label>
+              <textarea id="logNote" placeholder="How are you feeling today?"></textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-ghost" onclick="closeLogModal()">Cancel</button>
+            <button class="btn-primary" onclick="saveLogEntry()">Save Entry</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI PAGE -->
+    <div id="ai" class="page" style="display:none;">
+      <div class="ai-layout">
+        <div class="chat-panel">
+          <div class="chat-header">
+            <div class="ai-avatar">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" stroke="white" stroke-width="1.5"/><path d="M7 10C7 8.34 8.34 7 10 7C11.66 7 13 8.34 13 10" stroke="white" stroke-width="1.5" stroke-linecap="round"/><circle cx="10" cy="12" r="1" fill="white"/></svg>
+            </div>
+            <div>
+              <h3>STAR AI Assistant</h3>
+              <span class="ai-status">● Online — Powered by Groq</span>
+            </div>
+          </div>
+
+          <div class="chat-box" id="chatBox">
+            <div class="chat-message ai">
+              <div class="msg-avatar">AI</div>
+              <div class="msg-bubble">Hello! I'm your STAR health assistant, powered by Groq (Llama 3). I can analyze your biomarkers, answer health questions, and give personalized insights. First, make sure to add your free API key in <strong>Settings &gt; AI Assistant</strong>. How can I help you today?</div>
+            </div>
+          </div>
+
+          <div class="chat-input-area">
+            <div class="quick-prompts">
+              <button onclick="quickPrompt('Analyze my glucose levels')">Glucose analysis</button>
+              <button onclick="quickPrompt('How is my hydration?')">Hydration check</button>
+              <button onclick="quickPrompt('What should I eat today?')">Diet advice</button>
+              <button onclick="quickPrompt('Give me a health summary')">Health summary</button>
+            </div>
+            <div class="chat-input">
+              <textarea id="chatInput" placeholder="Ask about your health, biomarkers, or get personalized advice..." rows="1" onkeydown="handleChatKey(event)"></textarea>
+              <button class="send-btn" onclick="sendMessage()">
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M3 9L15 9M15 9L10 4M15 9L10 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="ai-sidebar-panel">
+          <div class="panel-header"><h3>Current Metrics</h3></div>
+          <div class="ai-metrics">
+            <div class="ai-metric blue">
+              <span class="ai-m-label">Hydration</span>
+              <span class="ai-m-val">79%</span>
+              <div class="ai-m-bar"><div style="width:79%"></div></div>
+            </div>
+            <div class="ai-metric green">
+              <span class="ai-m-label">Glucose</span>
+              <span class="ai-m-val">94 mg/dL</span>
+              <div class="ai-m-bar"><div style="width:65%"></div></div>
+            </div>
+            <div class="ai-metric orange">
+              <span class="ai-m-label">Protein</span>
+              <span class="ai-m-val">12 mg/dL</span>
+              <div class="ai-m-bar"><div style="width:55%"></div></div>
+            </div>
+            <div class="ai-metric purple">
+              <span class="ai-m-label">pH Level</span>
+              <span class="ai-m-val">7.2</span>
+              <div class="ai-m-bar"><div style="width:72%"></div></div>
+            </div>
+          </div>
+
+          <div class="panel-header" style="margin-top:20px"><h3>Conversation Tips</h3></div>
+          <ul class="tips-list">
+            <li>Ask about specific biomarkers</li>
+            <li>Request a weekly summary</li>
+            <li>Get diet recommendations</li>
+            <li>Ask about symptoms</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- COMMUNITY PAGE -->
+    <div id="community" class="page" style="display:none;">
+      <div class="community-grid">
+        <div class="community-main">
+          <div class="forum-categories">
+            <button class="forum-cat active" onclick="filterCommunity('all', this)">All Posts</button>
+            <button class="forum-cat" onclick="filterCommunity('nutrition', this)">Nutrition</button>
+            <button class="forum-cat" onclick="filterCommunity('fitness', this)">Fitness</button>
+            <button class="forum-cat" onclick="filterCommunity('mental-health', this)">Mental Health</button>
+            <button class="forum-cat" onclick="filterCommunity('qa', this)">Q&A</button>
+          </div>
+
+          <!-- CREATE POST -->
+          <div class="create-post-card">
+            <div class="create-post-top">
+              <div class="avatar small" id="communityAvatar">A</div>
+              <textarea id="newPostText" placeholder="Share something with the community..." rows="2"></textarea>
+            </div>
+            <div class="create-post-bottom">
+              <select id="newPostCategory">
+                <option value="general">General</option>
+                <option value="nutrition">Nutrition</option>
+                <option value="fitness">Fitness</option>
+                <option value="mental-health">Mental Health</option>
+                <option value="qa">Q&A</option>
+              </select>
+              <button class="btn-primary small" onclick="createPost()">Post</button>
+            </div>
+          </div>
+
+          <div id="communityStatus" style="text-align:center;padding:20px;color:var(--text-3);font-size:0.85rem;"></div>
+          <div class="forum-posts" id="forumPosts"></div>
+        </div>
+
+        <div class="community-sidebar">
+          <div class="dash-panel">
+            <div class="panel-header"><h3>Community Stats</h3></div>
+            <div class="community-stats">
+              <div class="comm-stat"><span class="comm-num" id="statMembers">0</span><span>Members</span></div>
+              <div class="comm-stat"><span class="comm-num" id="statPosts">0</span><span>Posts</span></div>
+              <div class="comm-stat"><span class="comm-num" id="statLikes">0</span><span>Likes</span></div>
+            </div>
+          </div>
+          <div class="dash-panel">
+            <div class="panel-header"><h3>Trending Topics</h3></div>
+            <div class="trending-list">
+              <div class="trend-item"># hydration-tips</div>
+              <div class="trend-item"># glucose-management</div>
+              <div class="trend-item"># protein-intake</div>
+              <div class="trend-item"># ph-balance</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETTINGS PAGE -->
+    <div id="settings" class="page" style="display:none;">
+      <div class="settings-layout">
+        <div class="settings-nav">
+          <div class="settings-nav-item active" onclick="switchSettings('profile', this)">Profile</div>
+          <div class="settings-nav-item" onclick="switchSettings('notifications', this)">Notifications</div>
+          <div class="settings-nav-item" onclick="switchSettings('health', this)">Health Goals</div>
+          <div class="settings-nav-item" onclick="switchSettings('appearance', this)">Appearance</div>
+          <div class="settings-nav-item" onclick="switchSettings('ai-config', this)">AI Assistant</div>
+          <div class="settings-nav-item" onclick="switchSettings('community-config', this)">Community</div>
+        </div>
+
+        <div class="settings-content">
+          <div id="settings-profile" class="settings-section active-settings">
+            <h3>Profile Information</h3>
+            <div class="profile-photo-row">
+              <div class="avatar large" id="settingsAvatar">A</div>
+              <button class="btn-outline">Change Photo</button>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label>Full Name</label><input type="text" id="settingsName" value="Alex Johnson"></div>
+              <div class="form-group"><label>Email</label><input type="email" id="settingsEmail" value="alex@example.com"></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label>Age</label><input type="number" value="28"></div>
+              <div class="form-group"><label>Gender</label><select><option>Prefer not to say</option><option>Male</option><option>Female</option><option>Other</option></select></div>
+            </div>
+            <button class="btn-primary" onclick="saveProfile()">Save Changes</button>
+          </div>
+
+          <div id="settings-notifications" class="settings-section" style="display:none;">
+            <h3>Notification Preferences</h3>
+            <div class="toggle-list">
+              <div class="toggle-row"><div><p>Daily health summary</p><span>Receive a daily summary of your health metrics</span></div><div class="toggle on" onclick="toggleSwitch(this)"><div class="toggle-knob"></div></div></div>
+              <div class="toggle-row"><div><p>Biomarker alerts</p><span>Get alerted when metrics go out of range</span></div><div class="toggle on" onclick="toggleSwitch(this)"><div class="toggle-knob"></div></div></div>
+              <div class="toggle-row"><div><p>Community replies</p><span>Notifications for replies on your posts</span></div><div class="toggle" onclick="toggleSwitch(this)"><div class="toggle-knob"></div></div></div>
+              <div class="toggle-row"><div><p>AI insights</p><span>Weekly AI-generated health insights</span></div><div class="toggle on" onclick="toggleSwitch(this)"><div class="toggle-knob"></div></div></div>
+            </div>
+          </div>
+
+          <div id="settings-health" class="settings-section" style="display:none;">
+            <h3>Health Goals</h3>
+            <div class="goal-list">
+              <div class="form-group"><label>Hydration target (%)</label><input type="range" min="60" max="100" value="80" oninput="this.nextElementSibling.textContent=this.value+'%'"><span>80%</span></div>
+              <div class="form-group"><label>Glucose target (mg/dL)</label><input type="range" min="70" max="110" value="90" oninput="this.nextElementSibling.textContent=this.value"><span>90</span></div>
+              <div class="form-group"><label>Daily water intake (L)</label><input type="range" min="1" max="4" step="0.1" value="2.5" oninput="this.nextElementSibling.textContent=this.value+'L'"><span>2.5L</span></div>
+            </div>
+            <button class="btn-primary">Save Goals</button>
+          </div>
+
+          <div id="settings-appearance" class="settings-section" style="display:none;">
+            <h3>Appearance</h3>
+            <div class="theme-options">
+              <div class="theme-card active" onclick="setTheme('light', this)">
+                <div class="theme-preview light-preview"></div>
+                <span>Light</span>
+              </div>
+              <div class="theme-card" onclick="setTheme('dark', this)">
+                <div class="theme-preview dark-preview"></div>
+                <span>Dark</span>
+              </div>
+            </div>
+          </div>
+
+          <div id="settings-ai-config" class="settings-section" style="display:none;">
+            <h3>AI Assistant Configuration</h3>
+            <p style="font-size:0.85rem;color:var(--text-2);margin-bottom:20px;line-height:1.6;">
+              Connect the AI Assistant to Groq (fast, free inference for open-source models). Get your free key at <a href="https://console.groq.com/keys" target="_blank" style="color:var(--blue)">console.groq.com/keys</a>
+            </p>
+            <div class="form-group">
+              <label>Groq API Key</label>
+              <input type="password" id="groqApiKey" placeholder="gsk_..." autocomplete="off">
+            </div>
+            <div class="form-group">
+              <label>Model</label>
+              <select id="groqModel">
+                <option value="llama-3.3-70b-versatile">Llama 3.3 70B (Smartest, free)</option>
+                <option value="llama-3.1-8b-instant">Llama 3.1 8B (Fastest, free)</option>
+                <option value="gemma2-9b-it">Gemma 2 9B (Google, free)</option>
+              </select>
+            </div>
+            <button class="btn-primary" onclick="saveAIConfig()" style="width:auto;">Save API Settings</button>
+            <div id="aiConfigStatus" style="margin-top:12px;font-size:0.82rem;"></div>
+          </div>
+
+          <div id="settings-community-config" class="settings-section" style="display:none;">
+            <h3>Community (Firebase)</h3>
+            <p style="font-size:0.85rem;color:var(--text-2);margin-bottom:20px;line-height:1.6;">
+              Powers the shared community — posts, comments, and likes.<br>
+              1. Go to <a href="https://console.firebase.google.com" target="_blank" style="color:var(--blue)">console.firebase.google.com</a> and create a free project<br>
+              2. Create a Firestore database (start in test mode)<br>
+              3. Go to Project Settings > General > Your apps > Add web app<br>
+              4. Copy the config object values below
+            </p>
+            <div class="form-group">
+              <label>API Key</label>
+              <input type="text" id="fbApiKey" placeholder="AIza...">
+            </div>
+            <div class="form-group">
+              <label>Auth Domain</label>
+              <input type="text" id="fbAuthDomain" placeholder="your-project.firebaseapp.com">
+            </div>
+            <div class="form-group">
+              <label>Project ID</label>
+              <input type="text" id="fbProjectId" placeholder="your-project-id">
+            </div>
+            <div class="form-group">
+              <label>Storage Bucket</label>
+              <input type="text" id="fbStorageBucket" placeholder="your-project.appspot.com">
+            </div>
+            <div class="form-group">
+              <label>Messaging Sender ID</label>
+              <input type="text" id="fbMessagingSenderId" placeholder="123456789">
+            </div>
+            <div class="form-group">
+              <label>App ID</label>
+              <input type="text" id="fbAppId" placeholder="1:123:web:abc123">
+            </div>
+            <button class="btn-primary" onclick="saveFirebaseConfig()" style="width:auto;">Save & Connect</button>
+            <div id="fbConfigStatus" style="margin-top:12px;font-size:0.82rem;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
