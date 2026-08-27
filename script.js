@@ -789,6 +789,7 @@ let uploadedImageData = null;
 let uploadedFile = null;
 let lastAnalysisResult = null;
 let postImageData = null;
+let pendingCommentImage = {};
 
 function handleDragOver(e) {
   e.preventDefault();
@@ -1172,8 +1173,14 @@ function renderPosts(posts) {
           <div class="comments-section" id="comments-${p.id}" style="display:none;">
             <div class="comments-list" id="commentsList-${p.id}"></div>
             <div class="comment-input-row">
+              <label for="commentImageInput-${p.id}" style="cursor:pointer;font-size:20px;" title="Attach image to comment">🖼️</label>
+              <input type="file" id="commentImageInput-${p.id}" accept="image/*" style="display:none" onchange="handleCommentImage('${p.id}', this)">
               <input type="text" id="commentInput-${p.id}" placeholder="Write a comment..." onkeydown="if(event.key==='Enter')postComment('${p.id}')">
               <button class="btn-primary small" onclick="postComment('${p.id}')">Reply</button>
+            </div>
+            <div id="commentImagePreview-${p.id}" style="display:none;margin-top:6px;position:relative;">
+              <img id="commentPreviewImg-${p.id}" style="max-width:120px;max-height:120px;border-radius:8px;object-fit:cover;" alt="Preview">
+              <button onclick="removeCommentImage('${p.id}')" style="position:absolute;top:4px;left:4px;background:rgba(0,0,0,0.7);color:white;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:12px;">✕</button>
             </div>
           </div>
         </div>
@@ -1336,6 +1343,7 @@ async function loadComments(postId) {
           <div class="comment-body">
             <strong>${escapeHtml(c.authorName || "User")}</strong>
             <p id="commentText-${cid}">${escapeHtml(c.text || "")}</p>
+            ${c.image ? `<img src="${escapeHtml(c.image)}" style="max-width:150px;max-height:150px;border-radius:8px;object-fit:cover;margin:4px 0;" alt="comment image">` : ""}
             <span class="comment-time">${timeAgo(c.createdAt)}</span>
             ${c.authorName === currentUser.name ? `
               <span class="comment-actions">
@@ -1348,6 +1356,25 @@ async function loadComments(postId) {
   } catch (err) {
     list.innerHTML = '<p style="font-size:0.8rem;color:var(--red);">Failed to load comments</p>';
   }
+}
+
+function handleCommentImage(postId, input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    pendingCommentImage[postId] = e.target.result;
+    document.getElementById("commentPreviewImg-" + postId).src = pendingCommentImage[postId];
+    document.getElementById("commentImagePreview-" + postId).style.display = "block";
+  };
+  reader.readAsDataURL(file);
+  input.value = "";
+}
+
+function removeCommentImage(postId) {
+  delete pendingCommentImage[postId];
+  document.getElementById("commentImagePreview-" + postId).style.display = "none";
+  document.getElementById("commentImageInput-" + postId).value = "";
 }
 
 function editComment(postId, commentId) {
@@ -1418,10 +1445,16 @@ async function postComment(postId) {
     await addDoc(collection(db, "posts", postId, "comments"), {
       authorName: currentUser.name,
       text: text,
+      image: pendingCommentImage[postId] || null,
       createdAt: serverTimestamp()
     });
     await updateDoc(doc(db, "posts", postId), { commentCount: increment(1) });
     input.value = "";
+    delete pendingCommentImage[postId];
+    const prev = document.getElementById("commentImagePreview-" + postId);
+    if (prev) prev.style.display = "none";
+    const fileIn = document.getElementById("commentImageInput-" + postId);
+    if (fileIn) fileIn.value = "";
     loadComments(postId);
   } catch (err) {
     showToast("Error: " + err.message);
