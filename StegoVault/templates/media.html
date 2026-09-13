@@ -1,0 +1,158 @@
+{% extends 'base.html' %}
+{% block title %}{{ cfg.title }} — StegoVault{% endblock %}
+
+{% block content %}
+<section class="page-head">
+  <p class="hero-eyebrow">{{ cfg.title }}</p>
+  <h1>{{ cfg.title }}</h1>
+  <p class="muted">{{ cfg.blurb }}</p>
+</section>
+
+<section class="split">
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Hide a secret</span>
+      <span class="pill">Embed</span>
+    </div>
+    <form method="post" action="{{ url_for(cfg.kind ~ '_embed') }}" enctype="multipart/form-data" class="form">
+
+      <div class="segmented" data-segment>
+        <button type="button" class="seg-btn active" data-target="payload-text">Text</button>
+        <button type="button" class="seg-btn" data-target="payload-file">Attach file</button>
+      </div>
+      <input type="hidden" name="payload_type" id="payload_type" value="text">
+
+      <div id="payload-text" class="payload-pane">
+        <label class="field">
+          <span class="field-label">Secret text</span>
+          <textarea name="secret_text" rows="5" placeholder="Write the message you want to hide…"></textarea>
+        </label>
+      </div>
+
+      <div id="payload-file" class="payload-pane hidden">
+<label class="field">
+        <span class="field-label">Secret file</span>
+        <input type="file" name="secret_file" class="file-input" data-file-label>
+        <span class="file-hint">{{ cfg.payload_hint }}</span>
+      </label>
+      </div>
+
+      <label class="field">
+        <span class="field-label">{{ cfg.cover_label }}</span>
+        <input type="file" name="cover_file" accept="{{ cfg.cover_accept }}" class="file-input" data-file-label {% if not cfg.is_video %}required{% endif %}>
+        {% if cfg.is_video %}
+          <label class="checkbox">
+            <input type="checkbox" name="generate" value="1">
+            <span>Automatic video — generate a synthetic cover clip for me</span>
+          </label>
+        {% else %}
+          <span class="file-hint">{{ cfg.cover_extra }}</span>
+        {% endif %}
+      </label>
+
+      <label class="field">
+        <span class="field-label">Password <em class="opt">(optional)</em></span>
+        <input type="password" name="password" placeholder="Encrypt the payload with AES-256">
+      </label>
+
+      <div class="field-row">
+        <label class="field grow">
+          <span class="field-label">Output filename</span>
+          <input type="text" name="output_filename" value="stego{{ cfg.out_ext }}" placeholder="stego{{ cfg.out_ext }}">
+        </label>
+        <button type="submit" class="btn btn-primary align-end">Hide secret</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Reveal a secret</span>
+      <span class="pill pill-violet">Extract</span>
+    </div>
+    <form method="post" action="{{ url_for(cfg.kind ~ '_extract') }}" enctype="multipart/form-data" class="form">
+      <label class="field">
+        <span class="field-label">Carrier file with hidden payload</span>
+        <input type="file" name="embedded_file" accept="*" class="file-input" data-file-label required>
+        <span class="file-hint">A file produced by the "Hide" step. Extraction is automatic — no payload size needed.</span>
+      </label>
+      <label class="field">
+        <span class="field-label">Password <em class="opt">(if one was used)</em></span>
+        <input type="password" name="password" placeholder="The password used while hiding">
+      </label>
+      <button type="submit" class="btn btn-violet btn-block">Reveal secret</button>
+    </form>
+  </div>
+</section>
+
+{% if cfg.result %}
+<section class="section">
+  <h2 class="section-title">Extraction result</h2>
+  <div class="result-box">
+    {% if cfg.result.kind == 'text' %}
+      <p class="result-label">Hidden text:</p>
+      <pre class="secret-text">{{ cfg.result.text }}</pre>
+    {% else %}
+      <div class="file-result">
+        <div>
+          <p class="result-label">Hidden file recovered:</p>
+          <p class="file-name">{{ cfg.result.name }} <span class="muted">({{ cfg.result.size }})</span></p>
+        </div>
+        <a href="{{ url_for('download', filename=cfg.result.filename) }}" class="btn btn-primary">Download file</a>
+      </div>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
+{% if cfg.dl %}
+<section class="section">
+  <h2 class="section-title">Your hidden carrier is ready</h2>
+  <div class="card">
+    <div class="file-result">
+      <div>
+        <p class="file-name">{{ cfg.dl }}</p>
+        <p class="muted">Saved to your vault. The secret looks like ordinary media.</p>
+        {% if cfg.kind == 'video' %}
+        <p class="muted">Uncompressed AVIs play best in <strong>VLC / mpv</strong> — Windows Media Player may report them as unsupported. Extracting recovers the exact original payload.</p>
+        {% endif %}
+      </div>
+      <a href="{{ url_for('download', filename=cfg.dl) }}" class="btn btn-primary">Download carrier</a>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<section class="section">
+  <h2 class="section-title">Your vault — {{ cfg.kind | capitalize }} carriers</h2>
+  {% if cfg.files %}
+    <div class="table-wrap card">
+      <table class="table">
+        <thead>
+          <tr><th>Filename</th><th>Size</th><th>Created (UTC)</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for file in cfg.files %}
+          <tr>
+            <td class="file-name">{{ file.name }}</td>
+            <td>{{ file.size }}</td>
+            <td>{{ file.date }}</td>
+            <td class="ta-r">
+              <a class="btn btn-ghost btn-sm" href="{{ url_for('download', filename=file.name) }}">Download</a>
+              <form class="inline" method="post" action="{{ url_for('delete_file', filename=file.name) }}"
+                    onsubmit="return confirm('Delete {{ file.name }} from your vault?')">
+                <button type="submit" class="btn btn-danger btn-sm" title="Delete file">Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty">
+      <p>No {{ cfg.kind }} carriers here yet. Hide your first secret to create one.</p>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

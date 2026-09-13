@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+{% block title %}Home — StegoVault{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <p class="hero-eyebrow">Least Significant Bit steganography</p>
+  <h1>Hide any secret inside <span class="gradient">images</span>, <span class="gradient">audio</span> or <span class="gradient">video</span></h1>
+  <p class="hero-sub">
+    Embed private messages, pictures, or even whole video files inside an innocent-looking
+    carrier. Everything is encrypted with AES-256 before hiding.
+  </p>
+  <div class="hero-actions">
+    <a href="{{ url_for('image_page') }}" class="btn btn-primary">Hide something now</a>
+    <a href="{{ url_for('about') }}" class="btn btn-ghost">How it works</a>
+  </div>
+</section>
+
+<section class="section">
+  <h2 class="section-title">Choose a carrier</h2>
+  <div class="card-grid">
+    <a class="tile" href="{{ url_for('image_page') }}">
+      <span class="tile-icon tile-icon-image">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+      </span>
+      <span class="tile-title">Hide in images</span>
+      <span class="tile-copy">Text into image. Image into image. Output: lossless PNG / BMP.</span>
+      <span class="tile-cta">Open image lab</span>
+    </a>
+    <a class="tile" href="{{ url_for('audio_page') }}">
+      <span class="tile-icon tile-icon-audio">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+      </span>
+      <span class="tile-title">Hide in audio</span>
+      <span class="tile-copy">Text, image, audio or video into any audio. Output: lossless WAV.</span>
+      <span class="tile-cta">Open audio lab</span>
+    </a>
+    <a class="tile" href="{{ url_for('video_page') }}">
+      <span class="tile-icon tile-icon-video">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="14" height="14" rx="2"/><path d="m16 10 6-3v10l-6-3z"/></svg>
+      </span>
+      <span class="tile-title">Hide in video</span>
+      <span class="tile-copy">Text, image, audio or video into video. Output: lossless AVI.</span>
+      <span class="tile-cta">Open video lab</span>
+    </a>
+    <a class="tile" href="{{ url_for('file_page') }}">
+      <span class="tile-icon tile-icon-file">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m10 17 4-4-4-4"/></svg>
+      </span>
+      <span class="tile-title">Hide in any file</span>
+      <span class="tile-copy">Documents, archives, images, executables — any file can carry a secret.</span>
+      <span class="tile-cta">Open file lab</span>
+    </a>
+  </div>
+</section>
+
+<section class="section">
+  <h2 class="section-title">What can I hide in each carrier?</h2>
+  <div class="cap-table">
+    <div class="cap-row cap-head">
+      <span>Carrier</span><span>Text</span><span>Image</span><span>Audio</span><span>Video</span>
+    </div>
+    <div class="cap-row">
+      <span>Image (PNG/JPG/BMP/GIF/WebP)</span><span class="ok">Yes</span><span class="ok">Yes</span><span class="no">No</span><span class="no">No</span>
+    </div>
+    <div class="cap-row">
+      <span>Audio (WAV/MP3/FLAC/OGG)</span><span class="ok">Yes</span><span class="ok">Yes</span><span class="ok">Yes</span><span class="ok">Yes</span>
+    </div>
+    <div class="cap-row">
+      <span>Video (any: MP4/MKV/MOV/AVI)</span><span class="ok">Yes</span><span class="ok">Yes</span><span class="ok">Yes</span><span class="ok">Yes</span>
+    </div>
+    <div class="cap-row">
+      <span>Any file</span><span class="ok">Yes</span><span class="ok">Yes</span><span class="ok">Yes</span><span class="ok">Yes</span>
+    </div>
+  </div>
+  <p class="muted note">Capacity scales with file size: one hidden bit per pixel byte / audio sample / video frame byte. Larger carriers hold more.</p>
+</section>
+
+<section class="section">
+  <h2 class="section-title">Your vault</h2>
+  {% set counts = {'image': files.image|length, 'audio': files.audio|length, 'video': files.video|length, 'file': files.file|length} %}
+  <div class="vault-strip">
+    <a class="vault-card" href="{{ url_for('image_page') }}">
+      <span class="vault-count">{{ counts['image'] }}</span>
+      <span class="vault-label">Image carriers</span>
+    </a>
+    <a class="vault-card" href="{{ url_for('audio_page') }}">
+      <span class="vault-count">{{ counts['audio'] }}</span>
+      <span class="vault-label">Audio carriers</span>
+    </a>
+    <a class="vault-card" href="{{ url_for('video_page') }}">
+      <span class="vault-count">{{ counts['video'] }}</span>
+      <span class="vault-label">Video carriers</span>
+    </a>
+    <a class="vault-card" href="{{ url_for('file_page') }}">
+      <span class="vault-count">{{ counts['file'] }}</span>
+      <span class="vault-label">File carriers</span>
+    </a>
+  </div>
+</section>
+
+<section class="section">
+  <h2 class="section-title">How it works</h2>
+  <div class="steps">
+    <div class="step">
+      <span class="step-num">1</span>
+      <span class="step-title">Pick a carrier</span>
+      <span class="step-copy">A photo, a song or a clip that will carry your secret invisibly.</span>
+    </div>
+    <div class="step">
+      <span class="step-num">2</span>
+      <span class="step-title">Choose your payload</span>
+      <span class="step-copy">Type a message or attach any file, then set an optional password.</span>
+    </div>
+    <div class="step">
+      <span class="step-num">3</span>
+      <span class="step-title">Hide or reveal</span>
+      <span class="step-copy">LSB substitution + AES-256 encryption. Reversibly extractable any time.</span>
+    </div>
+  </div>
+</section>
+{% endblock %}

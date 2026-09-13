@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% block title %}About — StegoVault{% endblock %}
+
+{% block content %}
+<section class="page-head">
+  <p class="hero-eyebrow">About</p>
+  <h1>StegoVault</h1>
+  <p class="muted">A modern hands-on guide to steganography.</p>
+</section>
+
+<section class="section">
+  <div class="stack">
+    <div class="card">
+      <div class="card-head"><span class="card-title">What is steganography?</span></div>
+      <p>
+        Steganography hides data inside other, innocent-looking data. Unlike encryption — which makes a
+        message unreadable but visibly scrambled — steganography makes the very presence of the message
+        unnoticed. Here the carrier files look like ordinary photos, songs and clips.
+      </p>
+    </div>
+    <div class="card">
+      <div class="card-head"><span class="card-title">How the hiding works</span></div>
+      <p>
+        Digital media is made of bytes: pixel values in images, audio samples, and video frame bytes.
+        Each byte's least significant bit is only 1&thinsp;/&thinsp;256 of its value — invisible to the human
+        eye or ear. StegoVault swaps the carrier's least significant bits for the bits of your secret.
+      </p>
+      <ol class="steps-list">
+        <li><strong>Pack</strong> — your text or file is wrapped in a length-tagged container (magic header <code>STE1</code> + size), so extraction always knows exactly where the payload starts and ends.</li>
+        <li><strong>Encrypt</strong> — if a password is given, the payload is sealed with AES-256-GCM before embedding.</li>
+        <li><strong>Substitute</strong> — the encrypted bits overwrite the carrier's least significant bits, one bit per sample/pixel byte.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <div class="card-head"><span class="card-title">Supported combinations</span></div>
+      <ul class="feature-list">
+        <li>Text &rarr; Image (PNG / BMP / JPG / GIF / WebP / TIFF)</li>
+        <li>Image &rarr; Image</li>
+        <li>Text &rarr; Audio (WAV / MP3 / FLAC / OGG / M4A)</li>
+        <li>Image / Audio / Video &rarr; Audio</li>
+        <li>Text &rarr; Video (any cover, output uncompressed AVI)</li>
+        <li>Image / Audio / Video &rarr; Video</li>
+        <li>Text or any file &rarr; Any file (documents, archives, music, …)</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-head"><span class="card-title">Important limitations</span></div>
+      <ul class="feature-list">
+        <li>The extracted carrier is always re-encoded as a lossless file (PNG/BMP, WAV or AVI). After saving it, do not re-encode, compress or convert it again, or the hidden bits are destroyed.</li>
+        <li>Compressed covers (JPG, GIF, WebP, MP3, FLAC, MP4, MKV…) are decoded first — you get a lossless PNG/BMP/WAV/AVI with slightly different appearance/size than the original.</li>
+        <li>For the any-file carrier, files with their own integrity checks (ZIP, DOCX, MP3, MP4…) may refuse to open after editing, so prefer PNG, BMP, WAV or plain documents for guaranteed results.</li>
+        <li>A carrier can only hold so much: roughly one bit per pixel byte (image), per sample (audio), per frame byte (video), and per file byte.</li>
+        <li>Video output is raw uncompressed AVI — play it with VLC / mpv; Windows Media Player does not support this container.</li>
+        <li>Passwords are not stored anywhere — if you lose the password, the payload cannot be recovered at all.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+{% endblock %}

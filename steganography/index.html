@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Steganography Lab — Hide & Extract</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ======= HEADER ======= -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path d="M12 3L21 8V16L12 21L3 16V8L12 3Z" stroke="currentColor" stroke-width="1.6" fill="none"/>
+          <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.6" fill="none"/>
+          <circle cx="12" cy="12" r="1.4" fill="currentColor"/>
+        </svg>
+      </div>
+      <div>
+        <h1>Steganography Lab</h1>
+        <p>Hide secrets in images, audio &amp; video using LSB embedding</p>
+      </div>
+    </div>
+    <div class="tagline">
+      <span class="pulse-dot"></span> Everything runs locally in your browser
+    </div>
+  </header>
+
+  <main class="grid">
+
+    <!-- ======= HIDE PANEL ======= -->
+    <section class="card" id="hideCard">
+      <div class="card-head">
+        <h2>Hide a message</h2>
+        <span class="chip chip-hide">ENC</span>
+      </div>
+
+      <!-- Step 1: cover -->
+      <div class="step">
+        <div class="step-label">1 · Choose the cover media</div>
+        <div class="seg" id="coverSeg">
+          <button data-cover="image" class="active">Image</button>
+          <button data-cover="audio">Audio</button>
+          <button data-cover="video">Video</button>
+        </div>
+        <div class="dropzone" id="coverDrop">
+          <input type="file" id="coverFile" hidden>
+          <svg class="dz-icon" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M4 16L9 11L13 15L17 11L20 14V6C20 4.9 19.1 4 18 4H6C4.9 4 4 4.9 4 6V16Z" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M4 20H6" stroke-linecap="round"/>
+          </svg>
+          <p class="dz-title" id="coverDzTitle">Drop a PNG / JPG image here</p>
+          <p class="dz-sub" id="coverDzSub">or click to browse · output is always lossless PNG</p>
+          <div class="cover-preview" id="coverPreview" style="display:none;"></div>
+        </div>
+        <label class="check" id="synthCovers" style="display:none;">
+          <input type="checkbox" id="synthVideo" checked> Generate a demo cover video automatically (no input file needed)
+        </label>
+      </div>
+
+      <!-- Step 2: payload -->
+      <div class="step">
+        <div class="step-label">2 · What to hide</div>
+        <div class="seg" id="payloadSeg">
+          <button data-payload="text" class="active">Text</button>
+          <button data-payload="file">File</button>
+        </div>
+
+        <div id="textBox" style="display:block;">
+          <textarea id="secretText" rows="5" placeholder="Type the secret message here…"></textarea>
+        </div>
+
+        <div id="fileBox" style="display:none;">
+          <div class="seg" id="fileTypeSeg">
+            <button data-filetype="image" class="active">Image</button>
+            <button data-filetype="audio">Audio</button>
+            <button data-filetype="video">Video</button>
+            <button data-filetype="other">Other</button>
+          </div>
+          <div class="dropzone dropzone-small" id="payloadDrop">
+            <input type="file" id="payloadFile" hidden>
+            <p class="dz-title" id="payloadDzTitle">Drop an image to hide</p>
+            <p class="dz-sub">or click to browse</p>
+          </div>
+          <div class="payload-file-info" id="payloadFileInfo" style="display:none;"></div>
+        </div>
+      </div>
+
+      <!-- Step 3: password -->
+      <div class="step">
+        <div class="step-label">3 · Password <span class="muted">(optional — XOR protects the payload)</span></div>
+        <input type="password" id="hidePass" placeholder="Set a password">
+      </div>
+
+      <!-- capacity meter -->
+      <div class="meter" id="capacityBox" style="display:none;">
+        <div class="meter-text" id="capacityText"></div>
+        <div class="meter-track"><div class="meter-fill" id="capacityFill"></div></div>
+      </div>
+
+      <button class="btn-primary" id="hideBtn" onclick="doHide()">
+        <span>Hide message</span>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8H13M9 4L13 8L9 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="busy hidden" id="hideBusy"><div class="spinner"></div><span id="hideBusyText">Working…</span></div>
+
+      <div class="result" id="hideResult" style="display:none;"></div>
+    </section>
+
+    <!-- ======= EXTRACT PANEL ======= -->
+    <section class="card" id="extractCard">
+      <div class="card-head">
+        <h2>Extract a message</h2>
+        <span class="chip chip-extract">DEC</span>
+      </div>
+
+      <div class="step">
+        <div class="step-label">1 · Choose the stego media</div>
+        <div class="dropzone" id="extractDrop">
+          <input type="file" id="extractFile" hidden accept=".png,.jpg,.jpeg,.bmp,.wav,.avi,.webm,.mp4">
+          <svg class="dz-icon" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M3 17L7 13L11 17L15 13L21 19V5C21 3.9 20.1 3 19 3H5C3.9 3 3 3.9 3 5V17Z" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M8 7.5H16" stroke-linecap="round"/>
+          </svg>
+          <p class="dz-title" id="extractDzTitle">Drop a PNG / WAV / AVI file here</p>
+          <p class="dz-sub">or click to browse</p>
+          <div class="cover-preview" id="extractPreview" style="display:none;"></div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-label">2 · Password <span class="muted">(if one was used)</span></div>
+        <input type="password" id="extractPass" placeholder="Enter the password">
+      </div>
+
+      <button class="btn-primary" id="extractBtn" onclick="doExtract()">
+        <span>Extract message</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4V16M6 10L12 16L18 10" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="busy hidden" id="extractBusy"><div class="spinner"></div><span>Scanning LSBs…</span></div>
+
+      <div class="result" id="extractResult" style="display:none;"></div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p><b>How it works:</b> the least significant bit (LSB) of every pixel / audio sample / video frame byte is overwritten with your message bits — the change is invisible and inaudible. Output formats are always <b>lossless</b> (PNG, WAV, uncompressed AVI) so no hidden bit is destroyed by compression.</p>
+    <p><b>Tip:</b> to store a video, image or audio inside a video carrier, choose “File” as the payload and pick it — extraction returns the original file byte-for-byte.</p>
+  </footer>
+
+  <div id="toast"></div>
+  <script src="script.js"></script>
+</body>
+</html>
