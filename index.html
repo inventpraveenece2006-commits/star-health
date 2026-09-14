@@ -48,6 +48,14 @@
         <p>Sign in to your health dashboard</p>
       </div>
       <div id="loginError" class="auth-error" style="display:none;"></div>
+      <div class="auth-role-toggle">
+        <button class="role-btn active" id="loginPatientBtn" onclick="setAuthMode('patient')">Patient</button>
+        <button class="role-btn" id="loginDoctorBtn" onclick="setAuthMode('doctor')">Doctor</button>
+      </div>
+      <div id="loginNmrField" class="form-group" style="display:none;">
+        <label>NMR / Registration Number</label>
+        <input type="text" id="loginNmr" placeholder="e.g. NMR12345" autocomplete="off">
+      </div>
       <div class="form-group">
         <label>Email address</label>
         <input type="email" id="loginEmail" placeholder="you@example.com" autocomplete="email">
@@ -71,9 +79,17 @@
         <p>Start monitoring your health today</p>
       </div>
       <div id="registerError" class="auth-error" style="display:none;"></div>
+      <div class="auth-role-toggle">
+        <button class="role-btn active" id="regPatientBtn" onclick="setAuthMode('patient')">Patient</button>
+        <button class="role-btn" id="regDoctorBtn" onclick="setAuthMode('doctor')">Doctor</button>
+      </div>
       <div class="form-group">
         <label>Full name</label>
         <input type="text" id="regName" placeholder="Alex Johnson">
+      </div>
+      <div class="form-group">
+        <label>NMR / Registration Number</label>
+        <input type="text" id="regNmr" placeholder="e.g. NMR12345 (doctors only)" autocomplete="off">
       </div>
       <div class="form-group">
         <label>Email address</label>
@@ -124,6 +140,11 @@
         <span>Community</span>
         <div class="nav-dot"></div>
       </div>
+      <div class="nav-item doctor-only" data-page="doctor" onclick="showPage('doctor', this)">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M5 3H13V7H5V3Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M4 7C2 8 2.5 12 4.5 13H13.5C15.5 12 16 8 14 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="9" cy="10" r="1" fill="currentColor"/><path d="M7 15H11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span>Doctor</span>
+        <div class="nav-badge">NMR</div>
+      </div>
       <div class="nav-item" data-page="settings" onclick="showPage('settings', this)">
         <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 11.5C10.38 11.5 11.5 10.38 11.5 9C11.5 7.62 10.38 6.5 9 6.5C7.62 6.5 6.5 7.62 6.5 9C6.5 10.38 7.62 11.5 9 11.5Z" stroke="currentColor" stroke-width="1.5"/><path d="M14.5 9C14.5 8.72 14.48 8.44 14.44 8.17L16 6.85L14.5 4.15L12.59 4.73C12.18 4.42 11.73 4.16 11.24 3.97L10.85 2H7.15L6.76 3.97C6.27 4.16 5.82 4.42 5.41 4.73L3.5 4.15L2 6.85L3.56 8.17C3.52 8.44 3.5 8.72 3.5 9C3.5 9.28 3.52 9.56 3.56 9.83L2 11.15L3.5 13.85L5.41 13.27C5.82 13.58 6.27 13.84 6.76 14.03L7.15 16H10.85L11.24 14.03C11.73 13.84 12.18 13.58 12.59 13.27L14.5 13.85L16 11.15L14.44 9.83C14.48 9.56 14.5 9.28 14.5 9Z" stroke="currentColor" stroke-width="1.5"/></svg>
         <span>Settings</span>
@@ -143,7 +164,7 @@
         <div class="avatar small" id="sidebarAvatar">A</div>
         <div class="user-info">
           <span id="sidebarName">Alex Johnson</span>
-          <span class="user-status">● Active</span>
+          <span class="user-status">● Active · <span class="user-role">Member</span></span>
         </div>
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 3L9 7L5 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
@@ -770,6 +791,40 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- DOCTOR DASHBOARD -->
+    <div id="doctor" class="page" style="display:none;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+        <div class="doctor-badge">🩺</div>
+        <div>
+          <h2 style="margin:0;">Doctor's Panel</h2>
+          <p style="margin:0;font-size:0.85rem;color:var(--text-3);">Access patient records, analyses and confidential reports</p>
+        </div>
+      </div>
+
+      <div class="doctor-stats-row">
+        <div class="doctor-stat-card">
+          <div class="doctor-stat-num" id="docStatPatients">0</div>
+          <div class="doctor-stat-label">Patients</div>
+        </div>
+        <div class="doctor-stat-card">
+          <div class="doctor-stat-num" id="docStatReports">0</div>
+          <div class="doctor-stat-label">Reports</div>
+        </div>
+        <div class="doctor-stat-card">
+          <div class="doctor-stat-num" id="docStatHighRisk">0</div>
+          <div class="doctor-stat-label">High Risk</div>
+        </div>
+      </div>
+
+      <div class="dash-panel" style="margin-bottom:20px;">
+        <div class="panel-header"><h3>Patient Records</h3></div>
+        <div id="patientList" style="padding:20px;color:var(--text-3);font-size:0.9rem;text-align:center;">Loading patient records...</div>
+      </div>
+
+      <!-- Patient report drawer -->
+      <div id="patientDetail" style="display:none;"></div>
     </div>
 
   </div>

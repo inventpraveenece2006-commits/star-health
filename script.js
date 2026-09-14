@@ -3,7 +3,7 @@
    ============================================= */
 
 // ── State ──────────────────────────────────────
-let currentUser = { name: "Alex Johnson", email: "alex@example.com" };
+let currentUser = { name: "Alex Johnson", email: "alex@example.com", role: "patient", nmr: "" };
 let dashChartInstance = null;
 let diaryChartInstance = null;
 let scoreChartInstance = null;
@@ -112,6 +112,8 @@ async function handleLogin() {
   clearAuthError("loginError");
   const email = normalizeEmail(document.getElementById("loginEmail").value);
   const password = document.getElementById("loginPassword").value;
+  const nmr = document.getElementById("loginNmr").value.trim();
+  const mode = authMode;
 
   if (!email || !password) {
     showAuthError("loginError", "Please enter both email and password.");
@@ -132,7 +134,19 @@ async function handleLogin() {
     return;
   }
 
-  currentUser = { name: user.name, email: user.email };
+  if (user.role !== mode) {
+    showAuthError("loginError", mode === "doctor"
+      ? "This account is registered as a patient. Switch to Patient mode."
+      : "This account is registered as a doctor. Switch to Doctor mode.");
+    return;
+  }
+
+  if (mode === "doctor" && (!nmr || nmr.toUpperCase() !== (user.nmr || "").toUpperCase())) {
+    showAuthError("loginError", "Enter the correct NMR/Registration Number for this doctor account.");
+    return;
+  }
+
+  currentUser = { name: user.name, email: user.email, role: user.role || "patient", nmr: user.nmr || "" };
   localStorage.setItem(SESSION_KEY, JSON.stringify(currentUser));
   enterApp();
 }
@@ -142,6 +156,8 @@ async function handleRegister() {
   const name = document.getElementById("regName").value.trim();
   const email = normalizeEmail(document.getElementById("regEmail").value);
   const password = document.getElementById("regPassword").value;
+  const nmr = document.getElementById("regNmr").value.trim();
+  const mode = authMode;
 
   if (!name || !email || !password) {
     showAuthError("registerError", "Please fill in all fields.");
@@ -158,6 +174,11 @@ async function handleRegister() {
     return;
   }
 
+  if (mode === "doctor" && !isValidNMR(nmr)) {
+    showAuthError("registerError", "Doctors must provide a valid NMR/Registration Number (e.g. NMR12345).");
+    return;
+  }
+
   const users = getUsers();
   if (users[email]) {
     showAuthError("registerError", "An account with this email already exists. Try signing in.");
@@ -165,13 +186,45 @@ async function handleRegister() {
   }
 
   const passwordHash = await hashPassword(password);
-  users[email] = { name, email, passwordHash, createdAt: new Date().toISOString() };
+  users[email] = {
+    name, email, passwordHash,
+    role: mode,
+    nmr: mode === "doctor" ? nmr.toUpperCase() : "",
+    createdAt: new Date().toISOString()
+  };
   saveUsers(users);
 
-  currentUser = { name, email };
+  currentUser = { name, email, role: mode, nmr: mode === "doctor" ? nmr.toUpperCase() : "" };
   localStorage.setItem(SESSION_KEY, JSON.stringify(currentUser));
   showToast("Account created. Welcome!");
   enterApp();
+}
+
+function isValidNMR(nmr) {
+  return /^[A-Za-z0-9-]{6,}$/.test(nmr || "");
+}
+
+let authMode = "patient";
+
+function setAuthMode(mode) {
+  authMode = mode;
+  const isDoctor = mode === "doctor";
+  document.querySelectorAll(".role-btn").forEach(b => b.classList.remove("active"));
+  if (isDoctor) {
+    const active = document.getElementById("registerCard").style.display !== "none"
+      ? document.getElementById("regDoctorBtn")
+      : document.getElementById("loginDoctorBtn");
+    if (active) active.classList.add("active");
+  } else {
+    const active = document.getElementById("registerCard").style.display !== "none"
+      ? document.getElementById("regPatientBtn")
+      : document.getElementById("loginPatientBtn");
+    if (active) active.classList.add("active");
+  }
+  const loginNmr = document.getElementById("loginNmrField");
+  if (loginNmr) loginNmr.style.display = isDoctor ? "block" : "none";
+  const regNmrGrp = document.getElementById("regNmr") ? document.getElementById("regNmr").closest(".form-group") : null;
+  if (regNmrGrp) regNmrGrp.style.display = isDoctor ? "block" : "none";
 }
 
 function enterApp() {
@@ -181,6 +234,24 @@ function enterApp() {
   setDate();
   loadAIConfig();
   loadFirebaseSettings();
+
+  const isDoctor = currentUser.role === "doctor";
+  document.querySelectorAll(".doctor-only").forEach(el => {
+    el.style.display = isDoctor ? "flex" : "none";
+  });
+  if (isDoctor) {
+    const navItems = document.querySelectorAll(".nav-item");
+    navItems.forEach(n => n.classList.remove("active"));
+    showPage("doctor", document.querySelector('.nav-item[data-page="doctor"]'));
+  } else {
+    document.getElementById("pageTitle").textContent = "Dashboard";
+    const sub = document.getElementById("pageSubtitle");
+    if (sub) sub.textContent = "Overview of your health metrics";
+  }
+
+  const userChipRole = document.querySelector(".user-chip .user-role");
+  if (userChipRole) userChipRole.textContent = isDoctor ? "Doctor" : "Member";
+
   setTimeout(() => {
     renderDashboardChart();
     renderScoreChart();
@@ -193,12 +264,14 @@ function showRegister() {
   clearAuthError("loginError");
   document.getElementById("loginCard").style.display = "none";
   document.getElementById("registerCard").style.display = "block";
+  setAuthMode(authMode);
 }
 
 function showLogin() {
   clearAuthError("registerError");
   document.getElementById("loginCard").style.display = "block";
   document.getElementById("registerCard").style.display = "none";
+  setAuthMode(authMode);
 }
 
 function logout() {
@@ -213,7 +286,7 @@ function initAuthState() {
   try {
     const session = JSON.parse(raw);
     if (session && session.email) {
-      currentUser = { name: session.name, email: session.email };
+      currentUser = { name: session.name, email: session.email, role: session.role || "patient", nmr: session.nmr || "" };
       enterApp();
     }
   } catch (e) {}
@@ -226,10 +299,15 @@ const pageTitles = {
   diary: ["Health Diary", "Track and review your daily biomarkers"],
   ai: ["AI Assistant", "Get personalized health insights"],
   community: ["Community", "Connect with other health enthusiasts"],
-  settings: ["Settings", "Manage your account and preferences"]
+  settings: ["Settings", "Manage your account and preferences"],
+  doctor: ["Doctor's Panel", "Patient records and confidential reports"]
 };
 
 function showPage(page, el) {
+  if (page === "doctor" && currentUser.role !== "doctor") {
+    showToast("Access restricted to doctors only.");
+    return;
+  }
   document.querySelectorAll(".page").forEach(p => p.style.display = "none");
   const target = document.getElementById(page);
   if (target) { target.style.display = "block"; target.style.animation = "none"; void target.offsetWidth; target.style.animation = ""; }
@@ -246,6 +324,8 @@ function showPage(page, el) {
     const match = document.querySelector(`.nav-item[data-page="${page}"]`);
     if (match) match.classList.add("active");
   }
+
+  if (page === "doctor") loadDoctorDashboard();
 
   // Close profile menu
   const menu = document.getElementById("profileMenu");
@@ -866,6 +946,7 @@ async function runAIAnalysis() {
     ]);
     lastAnalysisResult = report;
     showAnalysisResult(report);
+    saveReportToFirebase(report);
   } catch (err) {
     showToast("Analysis failed: " + err.message);
     document.getElementById("placeholderCard").style.display = "block";
@@ -1483,6 +1564,176 @@ function filterCommunity(cat, btn) {
   document.querySelectorAll(".forum-cat").forEach(b => b.classList.remove("active"));
   btn.classList.add("active");
   listenToPosts();
+}
+
+// ── Doctor Dashboard ────────────────────────────
+async function saveReportToFirebase(report) {
+  try {
+    if (!db || !window.firebaseModules || !report) return;
+    const { addDoc, collection, serverTimestamp } = window.firebaseModules;
+    await addDoc(collection(db, "reports"), {
+      patientName: currentUser.name,
+      patientEmail: currentUser.email,
+      typeName: report.typeName,
+      label: report.label,
+      classification: report.classification,
+      risk: report.risk,
+      confidence: report.confidence,
+      color: report.color,
+      texture: report.texture,
+      shape: report.shape,
+      bristol: report.bristol,
+      hydration: report.hydration,
+      conditions: report.conditions || [],
+      recommendations: report.recommendations || [],
+      icon: report.icon,
+      reportId: report.id,
+      createdAt: serverTimestamp()
+    });
+  } catch (e) {
+    console.log("Report save skipped:", e.message);
+  }
+}
+
+async function loadDoctorDashboard() {
+  const listEl = document.getElementById("patientList");
+  if (!listEl) return;
+  if (!db || !window.firebaseModules) {
+    listEl.innerHTML = 'Connect Firebase in <strong>Settings > Community</strong> to load patient records.';
+    return;
+  }
+  listEl.innerHTML = 'Loading patient records...';
+  const { getDocs, collection, query, where, onSnapshot } = window.firebaseModules;
+
+  try {
+    const reportsSnap = await getDocs(query(collection(db, "reports")));
+    const patients = {};
+    let totalReports = 0, highRisk = 0;
+
+    reportsSnap.forEach(doc => {
+      const r = { id: doc.id, ...doc.data() };
+      totalReports++;
+      if (r.risk === "HIGH" || (r.risk || "").toUpperCase() === "HIGH") highRisk++;
+      const key = r.patientEmail || "unknown";
+      if (!patients[key]) patients[key] = { name: r.patientName || "Unknown", email: key, reports: [] };
+      patients[key].reports.push(r);
+    });
+
+    const patientArr = Object.values(patients);
+    document.getElementById("docStatPatients").textContent = patientArr.length;
+    document.getElementById("docStatReports").textContent = totalReports;
+    document.getElementById("docStatHighRisk").textContent = highRisk;
+
+    if (patientArr.length === 0) {
+      listEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3);">No patient reports yet. When patients run an analysis, their reports appear here.</div>';
+      return;
+    }
+
+    listEl.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        ${patientArr.map(p => {
+          const latest = p.reports[p.reports.length - 1];
+          const riskClass = (latest.risk || "low").toLowerCase();
+          return `
+            <div class="patient-card">
+              <div class="patient-info">
+                <div class="patient-avatar">${escapeHtml((p.name || "U").charAt(0).toUpperCase())}</div>
+                <div>
+                  <strong>${escapeHtml(p.name)}</strong>
+                  <div style="font-size:0.78rem;color:var(--text-3);">${escapeHtml(p.email)} · ${p.reports.length} report(s)</div>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <span class="risk-chip ${riskClass}">${escapeHtml((latest.risk || "N/A").toUpperCase())}</span>
+                <button class="btn-outline small" onclick="togglePatientDetail('${p.email}')">View Reports</button>
+              </div>
+            </div>`;
+        }).join("")}
+      </div>`;
+  } catch (err) {
+    listEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--red);">Failed to load: ' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+function togglePatientDetail(email) {
+  const el = document.getElementById("patientDetail");
+  if (!el) return;
+  if (el.style.display !== "none" && el.dataset.email === email) {
+    el.style.display = "none";
+    return;
+  }
+  el.style.display = "block";
+  el.dataset.email = email;
+  el.innerHTML = '<div style="padding:20px;color:var(--text-3);">Loading report details...</div>';
+  renderPatientDetail(email, el);
+}
+
+async function renderPatientDetail(email, container) {
+  if (!db || !window.firebaseModules) return;
+  const { getDocs, collection, query, orderBy } = window.firebaseModules;
+  try {
+    const snaps = await getDocs(query(collection(db, "reports"), orderBy("createdAt", "desc")));
+    const reports = [];
+    snaps.forEach(doc => { const r = { id: doc.id, ...doc.data() }; if (r.patientEmail === email) reports.push(r); });
+
+    if (reports.length === 0) {
+      container.innerHTML = '<div style="padding:20px;color:var(--text-3);">No reports found for this patient.</div>';
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="dash-panel" style="margin-top:16px;">
+        <div class="panel-header">
+          <h3>Reports — ${escapeHtml(reports[0].patientName || "Patient")}</h3>
+          <button class="btn-ghost small" onclick="document.getElementById('patientDetail').style.display='none'">Close</button>
+        </div>
+        ${reports.map((r, i) => {
+          const rc = (r.risk || "low").toLowerCase();
+          return `
+            <div class="doctor-report">
+              <div class="doctor-report-head">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span style="font-size:20px;">${r.icon || "🔬"}</span>
+                  <div>
+                    <strong>${escapeHtml(r.label || "")} — ${escapeHtml(r.classification || "")}</strong>
+                    <div style="font-size:0.76rem;color:var(--text-3);">
+                      ${r.typeName || ""} · Confidence ${r.confidence || "?"}% · <span class="risk-chip ${rc}" style="display:inline-block;">${escapeHtml((r.risk || "").toUpperCase())}</span>
+                    </div>
+                  </div>
+                </div>
+                <div style="text-align:right;font-size:0.76rem;color:var(--text-3);" class="doctor-report-meta">
+                  <div>${r.createdAt ? formatTimestamp(r.createdAt) : "—"}</div>
+                  <div>${r.reportId || ""}</div>
+                </div>
+              </div>
+              <div class="doctor-report-body">
+                <div class="report-confidential">
+                  <strong>🔒 CONFIDENTIAL</strong> — Conditions: ${(r.conditions || []).join("; ") || "N/A"}
+                </div>
+                <div class="report-profile">
+                  Bristol: ${escapeHtml(r.bristol || "N/A")} · Color: ${escapeHtml(r.color || "N/A")} · Texture: ${escapeHtml(r.texture || "N/A")} · Hydration: ${r.hydration != null ? r.hydration + "%" : "N/A"}
+                </div>
+                <details>
+                  <summary style="cursor:pointer;font-size:0.82rem;color:var(--blue);">Show recommendations</summary>
+                  <ul style="font-size:0.82rem;padding:8px 0 0 18px;color:var(--text-2);margin:0;">
+                    ${(r.recommendations || []).map(rec => `<li>${escapeHtml(rec)}</li>`).join("")}
+                  </ul>
+                </details>
+              </div>
+            </div>`;
+        }).join("")}
+      </div>`;
+  } catch (err) {
+    container.innerHTML = '<div style="padding:20px;color:var(--red);">Failed: ' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+function formatTimestamp(ts) {
+  try {
+    if (ts && ts.toDate) return ts.toDate().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    if (ts && ts.seconds) return new Date(ts.seconds * 1000).toLocaleString("en-GB");
+  } catch (e) {}
+  return "—";
 }
 
 document.addEventListener("DOMContentLoaded", () => {
