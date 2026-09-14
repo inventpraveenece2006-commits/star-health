@@ -1,5 +1,5 @@
 /* =============================================
-   STAR HEALTH SYSTEM — script.js
+   SWASTHIYA HEALTH SYSTEM — script.js
    ============================================= */
 
 // ── State ──────────────────────────────────────
@@ -552,7 +552,7 @@ function getSystemPrompt() {
     protein: d.protein[d.protein.length - 1],
     ph: d.ph[d.ph.length - 1]
   };
-  return `You are STAR, a friendly and knowledgeable AI health assistant embedded in the STAR Health System dashboard. You help users understand their biomarkers, give health advice, and answer health-related questions.
+  return `You are Swasthiya, a friendly and knowledgeable AI health assistant embedded in the Swasthiya Health System dashboard. You help users understand their biomarkers, give health advice, and answer health-related questions.
 
 Current user's biomarker data (this week):
 - Hydration: ${d.hydration.join(", ")}% (avg: ${(d.hydration.reduce((a,b)=>a+b,0)/d.hydration.length).toFixed(0)}%, latest: ${latest.hydration}%)
@@ -848,7 +848,7 @@ const StarVision = (() => {
   const buildReport = (analysis, stats, file) => {
     const def = TYPE_DEFS[analysis.type];
     return {
-      id: 'STAR-' + Date.now().toString(36).toUpperCase(),
+      id: 'SWASTHIYA-' + Date.now().toString(36).toUpperCase(),
       type: analysis.type, typeName: def.name, label: def.label,
       classification: def.classification, color: def.color,
       texture: def.texture, shape: def.shape, bristol: def.bristol,
@@ -992,7 +992,7 @@ function showAnalysisResult(r) {
 function downloadReport() {
   if (!lastAnalysisResult) return;
   const r = lastAnalysisResult;
-  const text = `STAR HEALTH ASSESSMENT REPORT
+  const text = `SWASTHIYA HEALTH ASSESSMENT REPORT
 Report ID: ${r.id}
 Generated: ${r.dateLabel}
 
@@ -1021,7 +1021,7 @@ ${r.disclaimer || ""}`;
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `STAR-Report-${r.id}.txt`;
+  a.download = `SWASTHIYA-Report-${r.id}.txt`;
   a.click();
   URL.revokeObjectURL(url);
 }

@@ -1,5 +1,5 @@
 /* =============================================
-   STAR HEALTH SYSTEM — style.css
+   SWASTHIYA HEALTH SYSTEM — style.css
    ============================================= */
 
 :root {
@@ -2186,6 +2186,11 @@ body {
 .intro-word span:nth-child(2) { animation-delay: 0.45s; }
 .intro-word span:nth-child(3) { animation-delay: 0.65s; }
 .intro-word span:nth-child(4) { animation-delay: 0.85s; }
+.intro-word span:nth-child(5) { animation-delay: 1.05s; }
+.intro-word span:nth-child(6) { animation-delay: 1.25s; }
+.intro-word span:nth-child(7) { animation-delay: 1.45s; }
+.intro-word span:nth-child(8) { animation-delay: 1.65s; }
+.intro-word span:nth-child(9) { animation-delay: 1.85s; }
 
 @keyframes letterPop {
   0%   { opacity: 0; transform: scale(2.6); filter: blur(12px) brightness(2); }
