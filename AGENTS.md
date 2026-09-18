@@ -1,16 +1,16 @@
-# Swasthiya Health System — Project Memory
+# Swasthya Health System — Project Memory
 
 ## Identity
-- Single-page health dashboard, formerly **"STAR Health System"**, fully rebranded to **SWASTHIYA**.
+- Single-page health dashboard, formerly **"STAR Health System"**, fully rebranded to **SWASTHYA**.
 - Live site: https://inventpraveenece2006-commits.github.io/star-health/
 - Repo: https://github.com/inventpraveenece2006-commits/star-health (branch `main`)
-- Working files: `index.html`, `script.js`, `style.css`, `swasthiya-logo.png`
+- Working files: `index.html`, `script.js`, `style.css`, `swasthya-logo.png`
 - Safety: always `node --check script.js` before committing. Never commit secrets. Ask before pushing/deploying if unsure.
 
 ## Branding notes
-- Title "Swasthiya Health System"; intro splash spells **SWASTHIYA** (9 letters). AI assistant identity = "Swasthiya". Reports download as `SWASTHIYA-Report-…`.
+- Title "Swasthya Health System"; intro splash spells **SWASTHYA** (9 letters). AI assistant identity = "Swasthya". Reports download as `SWASTHYA-Report-…`.
 - Engine name **StarVision** kept intentionally.
-- Navbar logo = transparent `swasthiya-logo.png` (413×373, 184KB); login page intentionally has NO logo.
+- Navbar logo = transparent `swasthya-logo.png` (413×373, 184KB); login page intentionally has NO logo.
 - localStorage keys keep the `star_*` prefix for backward compat (`star_users`, `star_session`, `star_groq_key`, `star_groq_model`, `star_my_doctor`, `star_firebase_config`).
 
 ## Auth / accounts (localStorage only — NOT a real DB)

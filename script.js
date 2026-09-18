@@ -1,5 +1,5 @@
 /* =============================================
-   SWASTHIYA HEALTH SYSTEM — script.js
+   SWASTHYA HEALTH SYSTEM — script.js
    ============================================= */
 
 // ── State ──────────────────────────────────────
@@ -720,7 +720,7 @@ function getSystemPrompt() {
     protein: d.protein[d.protein.length - 1],
     ph: d.ph[d.ph.length - 1]
   };
-  return `You are Swasthiya, a friendly and knowledgeable AI health assistant embedded in the Swasthiya Health System dashboard. You help users understand their biomarkers, give health advice, and answer health-related questions.
+  return `You are Swasthya, a friendly and knowledgeable AI health assistant embedded in the Swasthya Health System dashboard. You help users understand their biomarkers, give health advice, and answer health-related questions.
 
 Current user's biomarker data (this week):
 - Hydration: ${ch.length ? ch.join(", ") : "—"}% (avg: ${avg(ch)}%, latest: ${latest.hydration}%)
@@ -1021,7 +1021,7 @@ const StarVision = (() => {
   const buildReport = (analysis, stats, file) => {
     const def = TYPE_DEFS[analysis.type];
     return {
-      id: 'SWASTHIYA-' + Date.now().toString(36).toUpperCase(),
+      id: 'SWASTHYA-' + Date.now().toString(36).toUpperCase(),
       type: analysis.type, typeName: def.name, label: def.label,
       classification: def.classification, color: def.color,
       texture: def.texture, shape: def.shape, bristol: def.bristol,
@@ -1165,7 +1165,7 @@ function showAnalysisResult(r) {
 function downloadReport() {
   if (!lastAnalysisResult) return;
   const r = lastAnalysisResult;
-  const text = `SWASTHIYA HEALTH ASSESSMENT REPORT
+  const text = `SWASTHYA HEALTH ASSESSMENT REPORT
 Report ID: ${r.id}
 Generated: ${r.dateLabel}
 
@@ -1194,7 +1194,7 @@ ${r.disclaimer || ""}`;
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `SWASTHIYA-Report-${r.id}.txt`;
+  a.download = `SWASTHYA-Report-${r.id}.txt`;
   a.click();
   URL.revokeObjectURL(url);
 }
