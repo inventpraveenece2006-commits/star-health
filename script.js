@@ -1256,6 +1256,27 @@ function deleteUser(email) {
   showToast("User deleted");
 }
 
+function deleteAllUsers() {
+  if (!isAdmin()) {
+    showToast("Admin only.");
+    return;
+  }
+  if (!confirm("Delete ALL accounts except inventpraveenece2006@gmail.com? This cannot be undone.")) return;
+  if (!confirm("Are you absolutely sure? This wipes every other registered account on this browser only.")) return;
+  const users = getUsers();
+  const emails = Object.keys(users);
+  let removed = 0;
+  emails.forEach(email => {
+    if (normalizeEmail(email) !== ADMIN_EMAIL) {
+      delete users[email];
+      removed++;
+    }
+  });
+  saveUsers(users);
+  renderRegisteredUsers();
+  showToast(removed ? removed + " account(s) cleared — fresh start" : "No extra accounts to delete");
+}
+
 function saveProfile() {
   const name = document.getElementById("settingsName").value;
   const email = document.getElementById("settingsEmail").value;

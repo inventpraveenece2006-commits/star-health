@@ -852,9 +852,12 @@
           </div>
 
           <div id="settings-registered" class="settings-section" style="display:none;">
-            <h3>Registered Users</h3>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
+              <h3 style="margin:0;">Registered Users</h3>
+              <button class="btn-ghost small" style="color:var(--red);margin-left:auto;" onclick="deleteAllUsers()" title="Wipes every account except the admin email">Delete All Accounts</button>
+            </div>
             <p style="font-size:0.85rem;color:var(--text-2);margin-bottom:20px;line-height:1.6;">
-              All accounts registered on this browser/device (local database). You can view emails and delete accounts here. Passwords are stored hashed and are never shown.
+              All accounts registered on this browser/device (local database). You can view emails and delete accounts here. Passwords are stored hashed and are never shown. <strong>Delete All</strong> keeps only <strong>inventpraveenece2006@gmail.com</strong> for a fresh start.
             </p>
             <div id="registeredUsersList" style="display:flex;flex-direction:column;gap:10px;">
               <div style="padding:20px;color:var(--text-3);font-size:0.9rem;text-align:center;">Click this tab to load accounts…</div>
