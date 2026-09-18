@@ -11,6 +11,7 @@ let currentWeekOffset = 0;
 let diaryFilter = 'all';
 let chatHistory = [];
 let isGenerating = false;
+let currentDoctorSelection = null;
 
 const biomarkerData = {
   labels: ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
@@ -372,17 +373,17 @@ function enterApp() {
   loadFirebaseSettings();
 
   const isDoctor = currentUser.role === "doctor";
-  document.querySelectorAll(".doctor-only").forEach(el => {
-    el.style.display = isDoctor ? "flex" : "none";
+  document.querySelectorAll(".nav-item").forEach(n => {
+    const roles = (n.dataset.roles || "all").split(",");
+    n.style.display = (roles.includes(currentUser.role) || roles.includes("all")) ? "" : "none";
   });
+
   if (isDoctor) {
-    const navItems = document.querySelectorAll(".nav-item");
-    navItems.forEach(n => n.classList.remove("active"));
+    const elDoc = document.getElementById("docNmrLabel");
+    if (elDoc) elDoc.textContent = currentUser.nmr || "—";
     showPage("doctor", document.querySelector('.nav-item[data-page="doctor"]'));
   } else {
-    document.getElementById("pageTitle").textContent = "Dashboard";
-    const sub = document.getElementById("pageSubtitle");
-    if (sub) sub.textContent = "Overview of your health metrics";
+    showPage("dashboard", document.querySelector('.nav-item[data-page="dashboard"]'));
   }
 
   const userChipRole = document.querySelector(".user-chip .user-role");
@@ -394,7 +395,8 @@ function enterApp() {
     renderDashboardChart();
     renderScoreChart();
     renderDiaryChart();
-    initFirebase();
+    if (isDoctor) initFirebase().then(() => { syncDoctorProfile(); loadDoctorDashboard(); });
+    else initFirebase();
   }, 100);
 }
 
@@ -443,11 +445,13 @@ const pageTitles = {
   ai: ["AI Assistant", "Get personalized health insights"],
   community: ["Community", "Connect with other health enthusiasts"],
   settings: ["Settings", "Manage your account and preferences"],
-  doctor: ["Doctor's Panel", "Patient records and confidential reports"]
+  doctor: ["Patient Log", "Patients who route their reports to you"],
+  pdiary: ["Patient Diaries", "View the synced health diaries of your patients"],
+  messages: ["Messages", "Chat securely with your doctor or patients"]
 };
 
 function showPage(page, el) {
-  if (page === "doctor" && currentUser.role !== "doctor") {
+  if ((page === "doctor" || page === "pdiary") && currentUser.role !== "doctor") {
     showToast("Access restricted to doctors only.");
     return;
   }
@@ -469,6 +473,10 @@ function showPage(page, el) {
   }
 
   if (page === "doctor") loadDoctorDashboard();
+  else if (page === "pdiary") { setupPDiary(); }
+  else if (page === "messages") { setupMessagesPage(); }
+  else if (page === "analysis") { loadDoctors(); }
+  else if (page === "diary") { loadDiaryFromCloud().then(() => renderDiaryChart(diaryFilter)); }
 
   // Close profile menu
   const menu = document.getElementById("profileMenu");
@@ -664,6 +672,19 @@ function saveLogEntry() {
   const container = document.getElementById("diaryEntries");
   container.insertBefore(entry, container.firstChild);
 
+  // Sync to Firestore so the linked doctor can view this diary
+  if (db && window.firebaseModules) {
+    const { addDoc, collection, serverTimestamp } = window.firebaseModules;
+    addDoc(collection(db, "diaryLogs", currentUser.email, "entries"), {
+      hydration: hydration ? Number(hydration) : null,
+      glucose: glucose ? Number(glucose) : null,
+      protein: protein ? Number(protein) : null,
+      ph: ph ? Number(ph) : null,
+      note: note || "",
+      createdAt: serverTimestamp()
+    }).catch(e => console.log("Diary sync skipped:", e.message));
+  }
+
   // Clear
   ["logHydration","logGlucose","logProtein","logPH","logNote"].forEach(id => {
     const el = document.getElementById(id);
@@ -689,6 +710,10 @@ function getAIModel() {
 
 function getSystemPrompt() {
   const d = biomarkerData;
+  const clean = arr => arr.filter(v => v != null);
+  const ch = clean(d.hydration), cg = clean(d.glucose), cp = clean(d.protein), cph = clean(d.ph);
+  const avg = arr => arr.length ? (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(0) : "—";
+  const avgPh = phArr => phArr.length ? (phArr.reduce((a, b) => a + b, 0) / phArr.length).toFixed(1) : "—";
   const latest = {
     hydration: d.hydration[d.hydration.length - 1],
     glucose: d.glucose[d.glucose.length - 1],
@@ -698,10 +723,10 @@ function getSystemPrompt() {
   return `You are Swasthiya, a friendly and knowledgeable AI health assistant embedded in the Swasthiya Health System dashboard. You help users understand their biomarkers, give health advice, and answer health-related questions.
 
 Current user's biomarker data (this week):
-- Hydration: ${d.hydration.join(", ")}% (avg: ${(d.hydration.reduce((a,b)=>a+b,0)/d.hydration.length).toFixed(0)}%, latest: ${latest.hydration}%)
-- Glucose: ${d.glucose.join(", ")} mg/dL (avg: ${(d.glucose.reduce((a,b)=>a+b,0)/d.glucose.length).toFixed(0)} mg/dL, latest: ${latest.glucose} mg/dL)
-- Protein: ${d.protein.join(", ")} mg/dL (avg: ${(d.protein.reduce((a,b)=>a+b,0)/d.protein.length).toFixed(0)} mg/dL, latest: ${latest.protein} mg/dL)
-- pH Level: ${d.ph.join(", ")} (avg: ${(d.ph.reduce((a,b)=>a+b,0)/d.ph.length).toFixed(1)}, latest: ${latest.ph})
+- Hydration: ${ch.length ? ch.join(", ") : "—"}% (avg: ${avg(ch)}%, latest: ${latest.hydration}%)
+- Glucose: ${cg.length ? cg.join(", ") : "—"} mg/dL (avg: ${avg(cg)} mg/dL, latest: ${latest.glucose} mg/dL)
+- Protein: ${cp.length ? cp.join(", ") : "—"} mg/dL (avg: ${avg(cp)} mg/dL, latest: ${latest.protein} mg/dL)
+- pH Level: ${cph.length ? cph.join(", ") : "—"} (avg: ${avgPh(cph)}, latest: ${latest.ph})
 
 User name: ${currentUser.name}
 
@@ -1772,6 +1797,7 @@ async function saveReportToFirebase(report) {
     await addDoc(collection(db, "reports"), {
       patientName: currentUser.name,
       patientEmail: currentUser.email,
+      doctorNmr: (currentDoctorSelection && currentDoctorSelection.nmr) || "",
       typeName: report.typeName,
       label: report.label,
       classification: report.classification,
@@ -1804,7 +1830,7 @@ async function loadDoctorDashboard() {
   const { getDocs, collection, query, where, onSnapshot } = window.firebaseModules;
 
   try {
-    const reportsSnap = await getDocs(query(collection(db, "reports")));
+    const reportsSnap = await getDocs(query(collection(db, "reports"), where("doctorNmr", "==", currentUser.nmr || "")));
     const patients = {};
     let totalReports = 0, highRisk = 0;
 
@@ -1823,7 +1849,7 @@ async function loadDoctorDashboard() {
     document.getElementById("docStatHighRisk").textContent = highRisk;
 
     if (patientArr.length === 0) {
-      listEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3);">No patient reports yet. When patients run an analysis, their reports appear here.</div>';
+      listEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-3);">No patient reports yet. When a patient selects your NMR in their Analysis page, their reports appear here.</div>';
       return;
     }
 
@@ -1869,9 +1895,9 @@ function togglePatientDetail(btn) {
 
 async function renderPatientDetail(email, container) {
   if (!db || !window.firebaseModules) return;
-  const { getDocs, collection, query, orderBy } = window.firebaseModules;
+  const { getDocs, collection, query, orderBy, where } = window.firebaseModules;
   try {
-    const snaps = await getDocs(query(collection(db, "reports"), orderBy("createdAt", "desc")));
+    const snaps = await getDocs(query(collection(db, "reports"), where("doctorNmr", "==", currentUser.nmr || ""), orderBy("createdAt", "desc")));
     const reports = [];
     snaps.forEach(doc => { const r = { id: doc.id, ...doc.data() }; if (r.patientEmail === email) reports.push(r); });
 
@@ -1933,6 +1959,437 @@ function formatTimestamp(ts) {
     if (ts && ts.seconds) return new Date(ts.seconds * 1000).toLocaleString("en-GB");
   } catch (e) {}
   return "—";
+}
+
+// ── Doctor sync + patient-doctor linking ────────
+function getMyDoctor() {
+  try { return JSON.parse(localStorage.getItem("star_my_doctor")) || null; } catch { return null; }
+}
+
+function setMyDoctor(info) {
+  if (info) localStorage.setItem("star_my_doctor", JSON.stringify(info));
+  else localStorage.removeItem("star_my_doctor");
+}
+
+function updateDoctorSelection(sel) {
+  if (!sel) return;
+  const opt = sel.options[sel.selectedIndex];
+  const nmr = opt ? opt.value : "";
+  const info = nmr ? { nmr, email: opt.dataset.email || "", name: opt.dataset.name || "" } : null;
+  currentDoctorSelection = info;
+  setMyDoctor(info);
+  const st = document.getElementById("doctorPickStatus");
+  if (st) st.textContent = nmr ? `Reports will route to ${opt.dataset.name || "the selected doctor"}.` : "No doctor selected — reports stay private on this device.";
+}
+
+async function syncDoctorProfile() {
+  if (!db || !window.firebaseModules || currentUser.role !== "doctor" || !currentUser.nmr) return;
+  const { setDoc, doc, serverTimestamp } = window.firebaseModules;
+  try {
+    await setDoc(doc(db, "doctors", currentUser.email), {
+      name: currentUser.name,
+      email: currentUser.email,
+      nmr: currentUser.nmr.toUpperCase(),
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+  } catch (e) {
+    console.log("Doctor sync skipped:", e.message);
+  }
+}
+
+async function loadDoctors() {
+  if (!db || !window.firebaseModules) return;
+  const { getDocs, collection } = window.firebaseModules;
+  try {
+    const snap = await getDocs(collection(db, "doctors"));
+    const docs = [];
+    snap.forEach(d => { const r = d.data(); if (r && r.email && r.nmr) docs.push(r); });
+    docs.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    const prev = currentDoctorSelection || getMyDoctor();
+
+    const sel = document.getElementById("reportDoctorSelect");
+    if (sel) {
+      sel.innerHTML = '<option value="">No doctor selected</option>' + docs.map(d =>
+        `<option value="${escapeHtml(d.nmr)}" data-email="${escapeHtml(d.email)}" data-name="${escapeHtml(d.name)}"${prev && prev.nmr === d.nmr ? " selected" : ""}>${escapeHtml(d.name)} (${escapeHtml(d.email)}) · ${escapeHtml(d.nmr)}</option>`
+      ).join("");
+      updateDoctorSelection(sel);
+    }
+  } catch (e) {
+    console.log("Doctors load skipped:", e.message);
+  }
+}
+
+// ── Diaries from cloud (patient + doctor view) ──
+function diaryEntryHTML(entry, dateObj) {
+  const dayNames = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  const d = dateObj || new Date();
+  const dayName = dayNames[d.getDay()];
+  const dayNum = d.getDate();
+  const h = entry.hydration, g = entry.glucose, p = entry.protein, ph = entry.ph;
+  return `
+    <div class="diary-entry">
+      <div class="entry-day"><span class="day-name">${dayName}</span><span class="day-num">${dayNum}</span></div>
+      <div class="entry-metrics">
+        ${h != null ? `<div class="entry-metric blue"><span>Hydration</span><strong>${h}%</strong></div>` : ""}
+        ${g != null ? `<div class="entry-metric green"><span>Glucose</span><strong>${g} mg/dL</strong></div>` : ""}
+        ${p != null ? `<div class="entry-metric orange"><span>Protein</span><strong>${p} mg/dL</strong></div>` : ""}
+        ${ph != null ? `<div class="entry-metric purple"><span>pH</span><strong>${ph}</strong></div>` : ""}
+      </div>
+      <div class="entry-note">${escapeHtml(entry.note || "No notes added.")}</div>
+      <div class="entry-status good">Synced</div>
+    </div>`;
+}
+
+function entryDate(e) {
+  try {
+    if (e.createdAt && e.createdAt.toDate) return e.createdAt.toDate();
+    if (e.createdAt && e.createdAt.seconds) return new Date(e.createdAt.seconds * 1000);
+  } catch (err) {}
+  return new Date();
+}
+
+function rebuildBiomarkerData(entries) {
+  biomarkerData.labels = [];
+  biomarkerData.hydration = [];
+  biomarkerData.glucose = [];
+  biomarkerData.protein = [];
+  biomarkerData.ph = [];
+  entries.forEach(e => {
+    const d = entryDate(e);
+    biomarkerData.labels.push(d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }));
+    biomarkerData.hydration.push(e.hydration != null ? Number(e.hydration) : null);
+    biomarkerData.glucose.push(e.glucose != null ? Number(e.glucose) : null);
+    biomarkerData.protein.push(e.protein != null ? Number(e.protein) : null);
+    biomarkerData.ph.push(e.ph != null ? Number(e.ph) : null);
+  });
+}
+
+async function loadDiaryFromCloud() {
+  if (!db || !window.firebaseModules || !currentUser.email) return;
+  const { getDocs, collection, query, orderBy } = window.firebaseModules;
+  try {
+    const snap = await getDocs(query(collection(db, "diaryLogs", currentUser.email, "entries"), orderBy("createdAt", "asc")));
+    const entries = [];
+    snap.forEach(d => entries.push({ id: d.id, ...d.data() }));
+    if (entries.length === 0) return;
+    rebuildBiomarkerData(entries);
+    const container = document.getElementById("diaryEntries");
+    if (container) container.innerHTML = entries.map(e => diaryEntryHTML(e, entryDate(e))).join("");
+  } catch (e) {
+    console.log("Diary load skipped:", e.message);
+  }
+}
+
+// ── Patient Diaries (doctor) ────────────────────
+let pdiaryNames = {};
+let pdiaryChartInstance = null;
+
+async function setupPDiary() {
+  pdiaryNames = {};
+  const listEl = document.getElementById("pdiaryPatientList");
+  const viewEl = document.getElementById("pdiaryView");
+  if (viewEl) viewEl.style.display = "none";
+  if (!listEl) return;
+  if (!db || !window.firebaseModules) {
+    listEl.innerHTML = 'Connect Firebase in <strong>Settings &gt; Community</strong> to load patient diaries.';
+    return;
+  }
+  listEl.innerHTML = 'Loading your patients...';
+  try {
+    const patients = await getDoctorPatients();
+    if (patients.length === 0) {
+      listEl.innerHTML = '<div style="padding:20px;color:var(--text-3);">No patients yet. When a patient selects your NMR, their synced diary becomes viewable here.</div>';
+      return;
+    }
+    patients.forEach(p => { pdiaryNames[p.email] = p.name; });
+    listEl.innerHTML = '<div class="pdoc-list">' + patients.map(p => `
+      <button class="pdoc-btn" onclick="loadPatientDiary(this)" data-email="${escapeHtml(p.email)}">
+        <div class="patient-avatar">${escapeHtml((p.name || "U").charAt(0).toUpperCase())}</div>
+        <div>
+          <div>${escapeHtml(p.name)}</div>
+          <div class="pdoc-meta">${escapeHtml(p.email)}</div>
+        </div>
+      </button>`).join("") + '</div>';
+  } catch (err) {
+    listEl.innerHTML = '<div style="padding:20px;color:var(--red);">Failed to load: ' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+async function getDoctorPatients() {
+  const { getDocs, collection, query, where } = window.firebaseModules;
+  const snap = await getDocs(query(collection(db, "reports"), where("doctorNmr", "==", currentUser.nmr || "")));
+  const map = {};
+  snap.forEach(doc => {
+    const r = doc.data();
+    if (r.patientEmail) map[r.patientEmail] = { email: r.patientEmail, name: r.patientName || "Unknown" };
+  });
+  return Object.values(map).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+}
+
+async function loadPatientDiary(btn) {
+  const email = btn.dataset.email;
+  document.querySelectorAll(".pdoc-btn").forEach(b => b.classList.remove("active"));
+  if (btn) btn.classList.add("active");
+  const viewEl = document.getElementById("pdiaryView");
+  if (!viewEl) return;
+  viewEl.style.display = "block";
+  const nameEl = document.getElementById("pdiaryPatientName");
+  if (nameEl) nameEl.textContent = "Health Diary — " + (pdiaryNames[email] || email);
+  const entriesEl = document.getElementById("pdiaryEntries");
+  if (entriesEl) entriesEl.innerHTML = '<div style="padding:20px;color:var(--text-3);text-align:center;">Loading diary...</div>';
+  if (!db || !window.firebaseModules) return;
+
+  const { getDocs, collection, query, orderBy } = window.firebaseModules;
+  try {
+    const snap = await getDocs(query(collection(db, "diaryLogs", email, "entries"), orderBy("createdAt", "asc")));
+    const entries = [];
+    snap.forEach(d => entries.push({ id: d.id, ...d.data() }));
+    if (entriesEl) {
+      entriesEl.innerHTML = entries.length
+        ? entries.map(e => diaryEntryHTML(e, entryDate(e))).join("")
+        : '<div style="padding:20px;color:var(--text-3);text-align:center;">This patient has no synced diary entries yet.</div>';
+    }
+    renderPDiaryChart(entries);
+  } catch (err) {
+    if (entriesEl) entriesEl.innerHTML = '<div style="padding:20px;color:var(--red);text-align:center;">Failed: ' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+function renderPDiaryChart(entries) {
+  const ctx = document.getElementById("pdiaryChart");
+  if (!ctx) return;
+  if (pdiaryChartInstance) { pdiaryChartInstance.destroy(); pdiaryChartInstance = null; }
+  if (!entries.length) return;
+  const isDark = document.body.classList.contains("dark");
+  const gridColor = isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)";
+  const tickColor = isDark ? "#8a8a8a" : "#94a3b8";
+  const labels = entries.map(e => entryDate(e).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }));
+  const datasets = [
+    { label: "Hydration %", data: entries.map(e => e.hydration != null ? Number(e.hydration) : null), borderColor: "#0891b2" },
+    { label: "Glucose mg/dL", data: entries.map(e => e.glucose != null ? Number(e.glucose) : null), borderColor: "#10b981" },
+    { label: "Protein mg/dL", data: entries.map(e => e.protein != null ? Number(e.protein) : null), borderColor: "#f59e0b" },
+    { label: "pH", data: entries.map(e => e.ph != null ? Number(e.ph) : null), borderColor: "#8b5cf6" }
+  ];
+  pdiaryChartInstance = new Chart(ctx, {
+    type: "line",
+    data: { labels, datasets: datasets.map(d => ({ ...d, fill: true, tension: 0.4, pointBackgroundColor: d.borderColor, pointRadius: 4, borderWidth: 2.5 })) },
+    options: {
+      responsive: true,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { position: "top", labels: { color: tickColor, boxWidth: 12, padding: 14, font: { family: "'DM Sans', sans-serif", size: 12 } } },
+        tooltip: { backgroundColor: isDark ? "#1a1a1a" : "white", titleColor: isDark ? "#f5f5f5" : "#1a2332", bodyColor: isDark ? "#a1a1a1" : "#5a6a80", borderColor: isDark ? "#333333" : "#e4eaf2", borderWidth: 1, padding: 12, cornerRadius: 10 }
+      },
+      scales: {
+        x: { grid: { color: gridColor }, ticks: { color: tickColor } },
+        y: { grid: { color: gridColor }, ticks: { color: tickColor } }
+      }
+    }
+  });
+}
+
+// ── Messages (doctor <-> patient chat) ──────────
+let activeChatId = null;
+let unsubscribeConv = null;
+let unsubscribeMsg = null;
+let chatCounterpartyName = "";
+
+function sanitizeDocId(s) {
+  return String(s).replace(/[.#$/\[\]]/g, "_");
+}
+
+function chatDocId(doctorEmail, patientEmail) {
+  return sanitizeDocId(doctorEmail.toLowerCase() + "_" + patientEmail.toLowerCase());
+}
+
+async function setupMessagesPage() {
+  activeChatId = null;
+  chatCounterpartyName = "";
+  if (unsubscribeMsg) { unsubscribeMsg(); unsubscribeMsg = null; }
+  const hint = document.getElementById("msgPanelHint");
+  const title = document.getElementById("msgPanelTitle");
+  const sel = document.getElementById("doctorChatSelect");
+  const viewEl = document.getElementById("convView");
+  const headerEl = document.getElementById("convHeader");
+  if (headerEl) headerEl.style.display = "none";
+  const inputRow = document.getElementById("msgInputRow");
+  if (inputRow) inputRow.style.display = "none";
+  const msgList = document.getElementById("msgList");
+  if (msgList) msgList.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-3);font-size:0.9rem;">Select a conversation to start chatting.</div>';
+
+  if (!db || !window.firebaseModules) {
+    if (hint) hint.innerHTML = 'Connect Firebase in <strong>Settings &gt; Community</strong> to enable messaging.';
+    return;
+  }
+
+  if (currentUser.role === "doctor") {
+    if (title) title.textContent = "Start a Chat with a Patient";
+    if (sel) {
+      sel.innerHTML = '<option value="">Select a patient...</option>';
+      try {
+        const patients = await getDoctorPatients();
+        sel.innerHTML = '<option value="">Select a patient...</option>' + patients.map(p =>
+          `<option value="${escapeHtml(p.email)}" data-name="${escapeHtml(p.name)}">${escapeHtml(p.name)} (${escapeHtml(p.email)})</option>`
+        ).join("");
+      } catch (e) {}
+    }
+    if (hint) hint.textContent = "Patients appear here once they route a report to your NMR. You can chat before or after they send a report.";
+  } else {
+    if (title) title.textContent = "Talk to Your Doctor";
+    if (hint) hint.textContent = "Your reports are shared with the doctor you choose. Pick them here to start a private chat.";
+    await loadDoctorsPatientSelect();
+  }
+  refreshConversationList();
+}
+
+async function loadDoctorsPatientSelect() {
+  const sel = document.getElementById("doctorChatSelect");
+  if (!sel) return;
+  if (!db || !window.firebaseModules) return;
+  const { getDocs, collection } = window.firebaseModules;
+  try {
+    const snap = await getDocs(collection(db, "doctors"));
+    const docs = [];
+    snap.forEach(d => { const r = d.data(); if (r && r.email) docs.push(r); });
+    docs.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    const prev = currentDoctorSelection || getMyDoctor();
+    sel.innerHTML = '<option value="">Select a doctor...</option>' + docs.map(d =>
+      `<option value="${escapeHtml(d.email)}" data-name="${escapeHtml(d.name)}" data-nmr="${escapeHtml(d.nmr || "")}"${prev && prev.email === d.email ? " selected" : ""}>${escapeHtml(d.name)} (${escapeHtml(d.email)})</option>`
+    ).join("");
+  } catch (e) {
+    console.log("Doctor chat select skipped:", e.message);
+  }
+}
+
+function refreshConversationList() {
+  const listEl = document.getElementById("convList");
+  if (!listEl) return;
+  if (!db || !window.firebaseModules) {
+    listEl.innerHTML = 'Connect Firebase first.';
+    return;
+  }
+  if (unsubscribeConv) { unsubscribeConv(); unsubscribeConv = null; }
+  const { collection, onSnapshot, query, where } = window.firebaseModules;
+  unsubscribeConv = onSnapshot(query(collection(db, "chats"), where("participants", "array-contains", currentUser.email)), snap => {
+    const chats = [];
+    snap.forEach(d => { const c = d.data(); if (c.doctorEmail && c.patientEmail) chats.push({ id: d.id, ...c }); });
+    chats.sort((a, b) => (a.createdAt ? (a.createdAt.seconds || 0) : 0) - (b.createdAt ? (b.createdAt.seconds || 0) : 0));
+    if (!chats.length) {
+      listEl.innerHTML = 'No conversations yet.';
+      return;
+    }
+    listEl.innerHTML = chats.map(c => {
+      const isDoctor = c.doctorEmail === currentUser.email;
+      const name = isDoctor ? (c.patientName || c.patientEmail) : (c.doctorName || c.doctorEmail);
+      const initial = (name || "?").charAt(0).toUpperCase();
+      return `<div class="conv-row${c.id === activeChatId ? " active" : ""}" onclick="openConversation(this)" data-id="${c.id}" data-name="${escapeHtml(name)}">
+        <div class="conv-avatar" style="background:${getAvatarColor(name)}">${escapeHtml(initial)}</div>
+        <div>
+          <div class="conv-row-name">${escapeHtml(name)}</div>
+          <div class="conv-row-sub">${isDoctor ? "Patient" : "Doctor"}</div>
+        </div>
+      </div>`;
+    }).join("");
+  }, err => {
+    listEl.innerHTML = 'Failed to load conversations.';
+  });
+}
+
+function startDoctorChat() {
+  const sel = document.getElementById("doctorChatSelect");
+  if (!sel || !sel.value) { showToast("Select a person first."); return; }
+  const opt = sel.options[sel.selectedIndex];
+  const email = sel.value;
+  const name = opt.dataset.name || email;
+  if (currentUser.role === "doctor") {
+    openChat(currentUser.email, email, name);
+  } else {
+    const docNmr = opt.dataset.nmr || "";
+    setMyDoctor({ nmr: docNmr, email, name });
+    currentDoctorSelection = { nmr: docNmr, email, name };
+    openChat(email, currentUser.email, name);
+  }
+}
+
+async function openChat(doctorEmail, patientEmail, counterpartName) {
+  if (!db || !window.firebaseModules) return;
+  const { getDoc, doc, setDoc, serverTimestamp } = window.firebaseModules;
+  const id = chatDocId(doctorEmail, patientEmail);
+  const chatRef = doc(db, "chats", id);
+  try {
+    const existing = await getDoc(chatRef);
+    if (!existing.exists()) {
+      await setDoc(chatRef, {
+        doctorEmail,
+        doctorName: currentUser.role === "doctor" ? currentUser.name : counterpartName,
+        patientEmail,
+        patientName: currentUser.role === "doctor" ? counterpartName : currentUser.name,
+        participants: [doctorEmail, patientEmail],
+        createdAt: serverTimestamp()
+      });
+    }
+    openConversation(id, counterpartName);
+  } catch (err) {
+    showToast("Failed to open chat: " + err.message);
+  }
+}
+
+function openConversation(elOrId, name) {
+  let chatId, pname;
+  if (typeof elOrId === "object" && elOrId !== null) {
+    chatId = elOrId.dataset.id;
+    pname = elOrId.dataset.name || "";
+  } else {
+    chatId = elOrId;
+    pname = name || "";
+  }
+  activeChatId = chatId;
+  chatCounterpartyName = pname;
+  document.querySelectorAll(".conv-row").forEach(r => r.classList.remove("active"));
+  document.querySelectorAll(".conv-row").forEach(r => { if (r.dataset.id === chatId) r.classList.add("active"); });
+
+  const headerEl = document.getElementById("convHeader");
+  if (headerEl) {
+    headerEl.style.display = "flex";
+    headerEl.innerHTML = `<div class="conv-avatar" style="background:${getAvatarColor(chatCounterpartyName || "U")}">${escapeHtml((chatCounterpartyName || "?").charAt(0).toUpperCase())}</div><div>${escapeHtml(chatCounterpartyName || "Chat")}</div>`;
+  }
+  const inputRow = document.getElementById("msgInputRow");
+  if (inputRow) inputRow.style.display = "flex";
+  const msgList = document.getElementById("msgList");
+  if (msgList) msgList.innerHTML = '<div style="padding:20px;color:var(--text-3);text-align:center;">Loading messages...</div>';
+  if (!db || !window.firebaseModules) return;
+
+  if (unsubscribeMsg) { unsubscribeMsg(); unsubscribeMsg = null; }
+  const { collection, onSnapshot, query, orderBy } = window.firebaseModules;
+  unsubscribeMsg = onSnapshot(query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "asc")), snap => {
+    if (!msgList) return;
+    if (snap.empty) { msgList.innerHTML = '<div style="padding:20px;color:var(--text-3);text-align:center;">Say hello to start the conversation.</div>'; return; }
+    msgList.innerHTML = snap.docs.map(d => {
+      const m = d.data();
+      const mine = m.senderEmail === currentUser.email;
+      const ts = (() => { try { return m.createdAt && m.createdAt.toDate ? m.createdAt.toDate().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : ""; } catch (e) { return ""; } })();
+      return `<div class="pm-msg ${mine ? "mine" : "theirs"}">${escapeHtml(m.text || "")}<div class="pm-meta">${escapeHtml(mine ? "You" : (m.senderName || m.senderEmail || "Doctor"))}${ts ? " · " + ts : ""}</div></div>`;
+    }).join("");
+    msgList.scrollTop = msgList.scrollHeight;
+  }, err => {
+    if (msgList) msgList.innerHTML = '<div style="padding:20px;color:var(--red);text-align:center;">Failed to load messages.</div>';
+  });
+}
+
+function sendChatMessage() {
+  const input = document.getElementById("msgInput");
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  if (!db || !window.firebaseModules || !activeChatId) { showToast("Open a conversation first."); return; }
+  const { addDoc, collection, serverTimestamp } = window.firebaseModules;
+  addDoc(collection(db, "chats", activeChatId, "messages"), {
+    senderEmail: currentUser.email,
+    senderName: currentUser.name,
+    text,
+    createdAt: serverTimestamp()
+  }).catch(err => showToast("Failed to send: " + err.message));
+  input.value = "";
 }
 
 document.addEventListener("DOMContentLoaded", () => {
