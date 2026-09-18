@@ -2428,3 +2428,32 @@ body {
   .doctor-report-head { flex-direction: column; }
   .doctor-report-meta { text-align: left !important; }
 }
+
+/* Reset password modal */
+.reset-note {
+  font-size: 0.82rem;
+  color: var(--text-2);
+  background: var(--surface2);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+  line-height: 1.6;
+}
+.reset-note strong {
+  color: var(--blue);
+  font-size: 1rem;
+}
+
+/* Registered users */
+.registered-user {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  flex-wrap: wrap;
+}

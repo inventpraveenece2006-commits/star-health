@@ -59,7 +59,7 @@
       <div class="form-group">
         <label>Password</label>
         <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password">
-        <a href="#" class="forgot-link">Forgot password?</a>
+        <a href="#" class="forgot-link" onclick="openResetModal(event)">Forgot password?</a>
       </div>
       <button class="btn-primary" id="loginBtn" onclick="handleLogin()">
         <span>Sign in</span>
@@ -100,6 +100,51 @@
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8H13M9 4L13 8L9 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
       <p class="auth-switch">Already have an account? <a onclick="showLogin()">Sign in</a></p>
+    </div>
+
+    <!-- RESET PASSWORD MODAL -->
+    <div class="modal-overlay" id="resetModal" style="display:none;">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>Reset Password</h3>
+          <button class="icon-btn" onclick="closeReset()">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3L13 13M13 3L3 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div id="resetError" class="auth-error" style="display:none;"></div>
+
+          <div id="resetStepEmail">
+            <p style="font-size:0.85rem;color:var(--text-2);margin-bottom:16px;line-height:1.6;">
+              Enter the email you registered with and we'll send you a 6-digit code to reset your password.
+            </p>
+            <div class="form-group">
+              <label>Registered email</label>
+              <input type="email" id="resetEmail" placeholder="you@example.com" autocomplete="off">
+            </div>
+            <button class="btn-primary" onclick="sendResetCode()" style="width:100%;">Send reset code</button>
+          </div>
+
+          <div id="resetStepCode" style="display:none;">
+            <div class="reset-note">
+              Demo mode — no real email service. Your reset code is: <strong id="resetCodeDisplay" style="letter-spacing:2px;"></strong>
+            </div>
+            <div class="form-group">
+              <label>6-digit code</label>
+              <input type="text" id="resetCodeInput" placeholder="000000" autocomplete="off" maxlength="6">
+            </div>
+            <div class="form-group">
+              <label>New password</label>
+              <input type="password" id="resetNewPass" placeholder="At least 6 characters">
+            </div>
+            <div class="form-group">
+              <label>Confirm password</label>
+              <input type="password" id="resetConfirmPass" placeholder="Repeat new password">
+            </div>
+            <button class="btn-primary" onclick="completeReset()" style="width:100%;">Set new password</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -673,6 +718,7 @@
           <div class="settings-nav-item" onclick="switchSettings('appearance', this)">Appearance</div>
           <div class="settings-nav-item" onclick="switchSettings('ai-config', this)">AI Assistant</div>
           <div class="settings-nav-item" onclick="switchSettings('community-config', this)">Community</div>
+          <div class="settings-nav-item" onclick="switchSettings('registered', this)">Registered Users</div>
         </div>
 
         <div class="settings-content">
@@ -784,6 +830,16 @@
             </div>
             <button class="btn-primary" onclick="saveFirebaseConfig()" style="width:auto;">Save & Connect</button>
             <div id="fbConfigStatus" style="margin-top:12px;font-size:0.82rem;"></div>
+          </div>
+
+          <div id="settings-registered" class="settings-section" style="display:none;">
+            <h3>Registered Users</h3>
+            <p style="font-size:0.85rem;color:var(--text-2);margin-bottom:20px;line-height:1.6;">
+              All accounts registered on this browser/device (local database). You can view emails and delete accounts here. Passwords are stored hashed and are never shown.
+            </p>
+            <div id="registeredUsersList" style="display:flex;flex-direction:column;gap:10px;">
+              <div style="padding:20px;color:var(--text-3);font-size:0.9rem;text-align:center;">Click this tab to load accounts…</div>
+            </div>
           </div>
         </div>
       </div>

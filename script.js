@@ -227,6 +227,76 @@ function setAuthMode(mode) {
   if (regNmrGrp) regNmrGrp.style.display = isDoctor ? "block" : "none";
 }
 
+let pendingReset = null;
+
+function openResetModal(e) {
+  if (e) e.preventDefault();
+  clearAuthError("resetError");
+  document.getElementById("resetStepEmail").style.display = "block";
+  document.getElementById("resetStepCode").style.display = "none";
+  document.getElementById("resetEmail").value = "";
+  document.getElementById("resetCodeInput").value = "";
+  document.getElementById("resetNewPass").value = "";
+  document.getElementById("resetConfirmPass").value = "";
+  document.getElementById("resetModal").style.display = "flex";
+}
+
+function closeReset() {
+  document.getElementById("resetModal").style.display = "none";
+}
+
+function sendResetCode() {
+  clearAuthError("resetError");
+  const email = normalizeEmail(document.getElementById("resetEmail").value);
+  if (!email) {
+    showAuthError("resetError", "Enter your registered email address.");
+    return;
+  }
+  const users = getUsers();
+  if (!users[email]) {
+    showAuthError("resetError", "No account found with this email. Check the spelling or register first.");
+    return;
+  }
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  pendingReset = { email, code, expiry: Date.now() + 10 * 60 * 1000 };
+  document.getElementById("resetCodeDisplay").textContent = code;
+  document.getElementById("resetStepEmail").style.display = "none";
+  document.getElementById("resetStepCode").style.display = "block";
+}
+
+async function completeReset() {
+  clearAuthError("resetError");
+  if (!pendingReset || Date.now() > pendingReset.expiry) {
+    showAuthError("resetError", "Code expired. Close and request a new one.");
+    return;
+  }
+  const code = document.getElementById("resetCodeInput").value.trim();
+  const pass = document.getElementById("resetNewPass").value;
+  const confirm = document.getElementById("resetConfirmPass").value;
+  if (code !== pendingReset.code) {
+    showAuthError("resetError", "Incorrect code. Check the 6-digit code shown above.");
+    return;
+  }
+  if (pass.length < 6) {
+    showAuthError("resetError", "New password must be at least 6 characters.");
+    return;
+  }
+  if (pass !== confirm) {
+    showAuthError("resetError", "Passwords do not match.");
+    return;
+  }
+  const users = getUsers();
+  if (!users[pendingReset.email]) {
+    showAuthError("resetError", "This account no longer exists.");
+    return;
+  }
+  users[pendingReset.email].passwordHash = await hashPassword(pass);
+  saveUsers(users);
+  pendingReset = null;
+  closeReset();
+  showToast("Password reset. Sign in with your new password.");
+}
+
 function enterApp() {
   document.getElementById("auth").style.display = "none";
   document.getElementById("app").style.display = "flex";
@@ -1033,6 +1103,42 @@ function switchSettings(section, el) {
   const target = document.getElementById(`settings-${section}`);
   if (target) target.style.display = "block";
   if (el) el.classList.add("active");
+  if (section === "registered") renderRegisteredUsers();
+}
+
+function renderRegisteredUsers() {
+  const list = document.getElementById("registeredUsersList");
+  if (!list) return;
+  const users = getUsers();
+  const emails = Object.keys(users);
+  if (!emails.length) {
+    list.innerHTML = '<div style="padding:20px;color:var(--text-3);font-size:0.9rem;text-align:center;">No registered accounts on this browser/device yet.</div>';
+    return;
+  }
+  list.innerHTML = emails.map(email => {
+    const u = users[email];
+    const joined = u.createdAt ? new Date(u.createdAt).toLocaleString() : "—";
+    return `<div class="registered-user">
+      <div class="patient-info">
+        <div class="patient-avatar">${(u.name || "?").charAt(0).toUpperCase()}</div>
+        <div style="min-width:0;">
+          <strong style="font-size:0.92rem;display:block;">${escapeHtml(u.name || "Unknown")}</strong>
+          <span style="font-size:0.8rem;color:var(--text-2);word-break:break-all;">${escapeHtml(email)}</span>
+          <span style="font-size:0.72rem;color:var(--text-3);display:block;">Role: ${u.role || "patient"} · Joined: ${joined}</span>
+        </div>
+      </div>
+      <button class="btn-ghost small" style="color:var(--red);" onclick="deleteUser('${email.replace(/'/g, "\\'")}')">Delete</button>
+    </div>`;
+  }).join("");
+}
+
+function deleteUser(email) {
+  if (!confirm(`Delete account "${email}"? This cannot be undone.`)) return;
+  const users = getUsers();
+  delete users[email];
+  saveUsers(users);
+  renderRegisteredUsers();
+  showToast("User deleted");
 }
 
 function saveProfile() {
