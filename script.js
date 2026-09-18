@@ -56,6 +56,11 @@ function setDate() {
 // ── Auth (localStorage) ────────────────────────
 const USERS_KEY = "star_users";
 const SESSION_KEY = "star_session";
+const ADMIN_EMAIL = "inventpraveenece2006@gmail.com";
+
+function isAdmin() {
+  return currentUser && normalizeEmail(currentUser.email || "") === ADMIN_EMAIL;
+}
 
 function getUsers() {
   try { return JSON.parse(localStorage.getItem(USERS_KEY)) || {}; }
@@ -322,6 +327,8 @@ function enterApp() {
   const userChipRole = document.querySelector(".user-chip .user-role");
   if (userChipRole) userChipRole.textContent = isDoctor ? "Doctor" : "Member";
 
+  applyAdminUI();
+
   setTimeout(() => {
     renderDashboardChart();
     renderScoreChart();
@@ -342,6 +349,11 @@ function showLogin() {
   document.getElementById("loginCard").style.display = "block";
   document.getElementById("registerCard").style.display = "none";
   setAuthMode(authMode);
+}
+
+function applyAdminUI() {
+  const item = document.getElementById("registeredNavItem");
+  if (item) item.style.display = isAdmin() ? "block" : "none";
 }
 
 function logout() {
@@ -1109,6 +1121,10 @@ function switchSettings(section, el) {
 function renderRegisteredUsers() {
   const list = document.getElementById("registeredUsersList");
   if (!list) return;
+  if (!isAdmin()) {
+    list.innerHTML = '<div style="padding:20px;color:var(--text-3);font-size:0.9rem;text-align:center;">Access restricted to the administrator.</div>';
+    return;
+  }
   const users = getUsers();
   const emails = Object.keys(users);
   if (!emails.length) {
@@ -1133,6 +1149,14 @@ function renderRegisteredUsers() {
 }
 
 function deleteUser(email) {
+  if (!isAdmin()) {
+    showToast("Admin only.");
+    return;
+  }
+  if (normalizeEmail(email) === ADMIN_EMAIL) {
+    showToast("The admin account cannot be deleted.");
+    return;
+  }
   if (!confirm(`Delete account "${email}"? This cannot be undone.`)) return;
   const users = getUsers();
   delete users[email];
