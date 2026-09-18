@@ -71,15 +71,13 @@ function saveUsers(users) {
   localStorage.setItem(USERS_KEY, JSON.stringify(users));
 }
 
-async function hashPassword(password) {
+const PBKDF2_ITERATIONS = 210000;
+
+function legacyHashPassword(password) {
   try {
-    if (crypto && crypto.subtle) {
-      const data = new TextEncoder().encode(password + "::star::salt");
-      const buf = await crypto.subtle.digest("SHA-256", data);
-      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
-    }
+    const data = new TextEncoder().encode(password + "::star::salt");
+    // synchronous fallback path kept for no-subtle environments via async wrapper below
   } catch (e) {}
-  // Fallback simple hash (if crypto.subtle unavailable)
   let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
   const str = password + "::star::salt";
   for (let i = 0; i < str.length; i++) {
@@ -90,6 +88,63 @@ async function hashPassword(password) {
   h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
   h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
   return (h2 >>> 0).toString(16).padStart(8, "0") + (h1 >>> 0).toString(16).padStart(8, "0");
+}
+
+function bytesToB64(bytes) {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
+function b64ToBytes(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function pbkdf2Hex(password, salt, iterations) {
+  const keyPromise = crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+  return keyPromise.then(key => crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations, hash: "SHA-256" }, key, 256))
+    .then(buf => Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join(""));
+}
+
+async function hashPassword(password) {
+  try {
+    if (crypto && crypto.subtle) {
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const hash = await pbkdf2Hex(password, salt, PBKDF2_ITERATIONS);
+      return "pbkdf2$" + PBKDF2_ITERATIONS + "$" + bytesToB64(salt) + "$" + hash;
+    }
+  } catch (e) {}
+  return legacyHashPassword(password);
+}
+
+async function verifyPassword(password, stored) {
+  if (typeof stored === "string" && stored.startsWith("pbkdf2$")) {
+    try {
+      const parts = stored.split("$");
+      if (parts.length !== 4) return false;
+      const iter = Number(parts[1]);
+      const salt = b64ToBytes(parts[2]);
+      const expected = parts[3];
+      if (!(iter > 0) || !salt.length || !expected) return false;
+      const actual = await pbkdf2Hex(password, salt, iter);
+      return actual.toLowerCase() === expected.toLowerCase();
+    } catch (e) {
+      return false;
+    }
+  }
+  // Legacy SHA-256 hash string (fixed salt)
+  if (crypto && crypto.subtle) {
+    try {
+      const data = new TextEncoder().encode(password + "::star::salt");
+      const buf = await crypto.subtle.digest("SHA-256", data);
+      const hex = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+      return hex.toLowerCase() === stored.toLowerCase();
+    } catch (e) {}
+  }
+  return legacyHashPassword(password).toLowerCase() === stored.toLowerCase();
 }
 
 function normalizeEmail(email) {
@@ -133,10 +188,16 @@ async function handleLogin() {
     return;
   }
 
-  const hash = await hashPassword(password);
-  if (hash !== user.passwordHash) {
+  const ok = await verifyPassword(password, user.passwordHash);
+  if (!ok) {
     showAuthError("loginError", "Incorrect password. Please try again.");
     return;
+  }
+
+  if (typeof user.passwordHash !== "string" || !user.passwordHash.startsWith("pbkdf2$")) {
+    user.passwordHash = await hashPassword(password);
+    users[email] = user;
+    saveUsers(users);
   }
 
   if (user.role !== mode) {
@@ -596,7 +657,7 @@ function saveLogEntry() {
       ${protein ? `<div class="entry-metric orange"><span>Protein</span><strong>${protein} mg/dL</strong></div>` : ""}
       ${ph ? `<div class="entry-metric purple"><span>pH</span><strong>${ph}</strong></div>` : ""}
     </div>
-    <div class="entry-note">${note || "No notes added."}</div>
+    <div class="entry-note">${escapeHtml(note || "No notes added.")}</div>
     <div class="entry-status good">Logged</div>
   `;
 
@@ -764,7 +825,12 @@ async function sendMessage() {
 }
 
 function escapeHtml(str) {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 // ── ML Analysis Engine (StarVision — fully offline) ──
@@ -1375,7 +1441,7 @@ function renderPosts(posts) {
     const color = getAvatarColor(p.authorName || "User");
     const liked = (p.likes || []).includes(currentUser.name);
     const catTag = p.category && p.category !== "general"
-      ? `<span class="post-tag ${p.category}">${p.category.replace("-", " ")}</span>`
+      ? `<span class="post-tag ${escapeHtml(p.category)}">${escapeHtml(p.category).replace("-", " ")}</span>`
       : "";
 
     return `
@@ -1396,7 +1462,7 @@ function renderPosts(posts) {
           ${p.image ? `<img src="${escapeHtml(p.image)}" style="max-width:100%;max-height:280px;border-radius:10px;object-fit:cover;margin-top:8px;" alt="post image">` : ""}
           <div class="post-footer">
             <button onclick="toggleComments('${p.id}')">💬 ${(p.commentCount || 0)}</button>
-            <button onclick="toggleLike('${p.id}', ${JSON.stringify(p.likes || [])})" style="${liked ? "color:var(--red);border-color:var(--red)" : ""}">❤ ${(p.likes || []).length}</button>
+            <button onclick="toggleLike(this)" data-post-id="${p.id}" data-likes="${escapeHtml(JSON.stringify(p.likes || []))}" style="${liked ? "color:var(--red);border-color:var(--red)" : ""}">❤ ${(p.likes || []).length}</button>
           </div>
           <div class="comments-section" id="comments-${p.id}" style="display:none;">
             <div class="comments-list" id="commentsList-${p.id}"></div>
@@ -1523,11 +1589,13 @@ async function deletePost(postId) {
   }
 }
 
-async function toggleLike(postId, currentLikes) {
+async function toggleLike(btn) {
   if (!db || !window.firebaseModules) return;
   const { doc, updateDoc, arrayUnion, arrayRemove } = window.firebaseModules;
+  const postId = btn.dataset.postId;
   const ref = doc(db, "posts", postId);
   const name = currentUser.name;
+  const currentLikes = JSON.parse(btn.dataset.likes || "[]");
 
   try {
     if (currentLikes.includes(name)) {
@@ -1775,7 +1843,7 @@ async function loadDoctorDashboard() {
               </div>
               <div style="display:flex;align-items:center;gap:10px;">
                 <span class="risk-chip ${riskClass}">${escapeHtml((latest.risk || "N/A").toUpperCase())}</span>
-                <button class="btn-outline small" onclick="togglePatientDetail('${p.email}')">View Reports</button>
+                <button class="btn-outline small" onclick="togglePatientDetail(this)" data-email="${escapeHtml(p.email)}">View Reports</button>
               </div>
             </div>`;
         }).join("")}
@@ -1785,7 +1853,8 @@ async function loadDoctorDashboard() {
   }
 }
 
-function togglePatientDetail(email) {
+function togglePatientDetail(btn) {
+  const email = btn.dataset.email;
   const el = document.getElementById("patientDetail");
   if (!el) return;
   if (el.style.display !== "none" && el.dataset.email === email) {
@@ -1823,25 +1892,25 @@ async function renderPatientDetail(email, container) {
             <div class="doctor-report">
               <div class="doctor-report-head">
                 <div style="display:flex;align-items:center;gap:8px;">
-                  <span style="font-size:20px;">${r.icon || "🔬"}</span>
+                  <span style="font-size:20px;">${escapeHtml(r.icon || "🔬")}</span>
                   <div>
                     <strong>${escapeHtml(r.label || "")} — ${escapeHtml(r.classification || "")}</strong>
                     <div style="font-size:0.76rem;color:var(--text-3);">
-                      ${r.typeName || ""} · Confidence ${r.confidence || "?"}% · <span class="risk-chip ${rc}" style="display:inline-block;">${escapeHtml((r.risk || "").toUpperCase())}</span>
+                      ${escapeHtml(r.typeName || "")} · Confidence ${escapeHtml(r.confidence != null ? r.confidence : "?")}% · <span class="risk-chip ${rc}" style="display:inline-block;">${escapeHtml((r.risk || "").toUpperCase())}</span>
                     </div>
                   </div>
                 </div>
                 <div style="text-align:right;font-size:0.76rem;color:var(--text-3);" class="doctor-report-meta">
                   <div>${r.createdAt ? formatTimestamp(r.createdAt) : "—"}</div>
-                  <div>${r.reportId || ""}</div>
+                  <div>${escapeHtml(r.reportId || "")}</div>
                 </div>
               </div>
               <div class="doctor-report-body">
                 <div class="report-confidential">
-                  <strong>🔒 CONFIDENTIAL</strong> — Conditions: ${(r.conditions || []).join("; ") || "N/A"}
+                  <strong>🔒 CONFIDENTIAL</strong> — Conditions: ${escapeHtml((r.conditions || []).join("; ") || "N/A")}
                 </div>
                 <div class="report-profile">
-                  Bristol: ${escapeHtml(r.bristol || "N/A")} · Color: ${escapeHtml(r.color || "N/A")} · Texture: ${escapeHtml(r.texture || "N/A")} · Hydration: ${r.hydration != null ? r.hydration + "%" : "N/A"}
+                  Bristol: ${escapeHtml(r.bristol || "N/A")} · Color: ${escapeHtml(r.color || "N/A")} · Texture: ${escapeHtml(r.texture || "N/A")} · Hydration: ${escapeHtml(r.hydration != null ? r.hydration + "%" : "N/A")}
                 </div>
                 <details>
                   <summary style="cursor:pointer;font-size:0.82rem;color:var(--blue);">Show recommendations</summary>
