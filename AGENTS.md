@@ -13,13 +13,15 @@
 - Navbar logo = transparent `swasthya-logo.png` (413×373, 184KB); login page intentionally has NO logo.
 - localStorage keys keep the `star_*` prefix for backward compat (`star_users`, `star_session`, `star_groq_key`, `star_groq_model`, `star_my_doctor`, `star_firebase_config`).
 
-## Auth / accounts (localStorage only — NOT a real DB)
-- Accounts stored in `localStorage["star_users"]`, keyed by normalized email; passwords hashed (PBKDF2). No server DB of users exists.
-- **Each browser/device/domain has its own account list.**
-- Registered Users tab (Settings) lists only the accounts in the current browser. Deleting in one place does not affect others.
+## Auth / accounts (Firebase Auth + localStorage fallback) — NOT a real server DB
+- **Primary login is Firebase Authentication** (Email/Password) so the same account works on any device. Must be enabled in Firebase console (`musicon-cfe95` → Authentication → sign-in method).
+- Shared identity (name/role/nmr) lives in Firestore collection **`users/{email}`** (upserted on register/login via `upsertSharedProfile`). Role + doctor NMR checks read this so doctor login works cross-device.
+- `handleLogin` is Firebase-first: sign in → load shared profile → fall back to local record → else default patient. If Firebase sign-in fails, `tryLoginLegacy` verifies the local `star_users` hash and **auto-migrates** the account (creates Firebase Auth user + Firestore profile). `ensureLegacyRecord` keeps a local copy for offline fallback.
+- **Each browser/device/domain still has its own localStorage account list** (`star_users`) — but it's now only a cache/fallback; logging in with the same email+password anywhere works because Auth + `users/{email}` are shared.
+- Registered Users tab (Settings) lists **shared Firestore `users` accounts** (admin only); `deleteUser`/`deleteAllUsers` remove the shared profile (note: real Firebase Auth deletion requires Firebase Console, since client SDK can't delete other users).
 - Admin email: `ADMIN_EMAIL = "inventpraveenece2006@gmail.com"`; `isAdmin()` gates the Registered Users tab, user deletion, and `deleteAllUsers()`.
-- Admin account is undeletable by design. `deleteUser(email)` (per-user) and `deleteAllUsers()` (wipes all except admin) both exist.
-- Forgot password is demo-mode: reset code is displayed on-screen (no real email service); `pendingReset` expires in 10 min.
+- Admin account is undeletable by design.
+- Forgot password: sends a real reset email via Firebase (`sendPasswordResetEmail`) when connected; falls back to on-screen demo code (`pendingReset`, 10 min) only when Firebase is unavailable.
 
 ## Health data model
 - **Analysis/reports** → Firestore `reports` collection (addDoc), includes `patientName`, `patientEmail`, `doctorNmr` (uppercase NMR or ""), plus report fields. Auto-saved after each `runAIAnalysis`.

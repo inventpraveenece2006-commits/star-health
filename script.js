@@ -181,18 +181,50 @@ async function handleLogin() {
     return;
   }
 
+  const fb = ensureFirebase();
+  if (fb) {
+    try {
+      const { signInWithEmailAndPassword } = window.firebaseModules;
+      const cred = await signInWithEmailAndPassword(fb.auth, email, password);
+      let profile = await getSharedProfile(email);
+      if (!profile) {
+        const local = getUsers()[email];
+        if (local) profile = { name: local.name, email: local.email, role: local.role || "patient", nmr: local.nmr || "" };
+        if (profile) await upsertSharedProfile(profile);
+      }
+      if (!profile) profile = { name: (cred.user.displayName || email.split("@")[0]), email, role: "patient", nmr: "" };
+      await ensureLegacyRecord(email, profile, password);
+      loginAsProfile(profile, mode, nmr);
+      return;
+    } catch (err) {
+      const code = err && err.code ? err.code : "";
+      const migrated = await tryLoginLegacy(email, password, mode, nmr);
+      if (migrated) return;
+      if (code === "auth/email-already-in-use" || code === "auth/invalid-login-credentials" || code === "auth/wrong-password" || code === "auth/invalid-credential" || code === "auth/user-not-found") {
+        showAuthError("loginError", "Invalid email or password. If you registered on another device, use the same email and password.");
+      } else {
+        showAuthError("loginError", (err && err.message) || "Login failed. Check your connection and try again.");
+      }
+      return;
+    }
+  }
+
+  await tryLoginLegacy(email, password, mode, nmr);
+}
+
+async function tryLoginLegacy(email, password, mode, nmr) {
   const users = getUsers();
   const user = users[email];
 
   if (!user) {
     showAuthError("loginError", "No account found with this email. Please create an account first.");
-    return;
+    return false;
   }
 
   const ok = await verifyPassword(password, user.passwordHash);
   if (!ok) {
     showAuthError("loginError", "Incorrect password. Please try again.");
-    return;
+    return false;
   }
 
   if (typeof user.passwordHash !== "string" || !user.passwordHash.startsWith("pbkdf2$")) {
@@ -200,22 +232,73 @@ async function handleLogin() {
     users[email] = user;
     saveUsers(users);
   }
+  user.email = user.email || email;
 
-  if (user.role !== mode) {
+  const profile = { name: user.name, email: user.email, role: user.role || "patient", nmr: user.nmr || "" };
+
+  if (window.firebaseModules && loadFirebaseConfig()) {
+    try {
+      const fb = ensureFirebase();
+      if (fb) {
+        const { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } = window.firebaseModules;
+        let cred = null;
+        try {
+          cred = await signInWithEmailAndPassword(fb.auth, email, password);
+        } catch (e) {
+          if (e && e.code === "auth/user-not-found") {
+            cred = await createUserWithEmailAndPassword(fb.auth, email, password);
+            await updateProfile(cred.user, { displayName: profile.name || "" }).catch(() => {});
+          } else {
+            throw e;
+          }
+        }
+        await upsertSharedProfile(profile);
+        await ensureLegacyRecord(email, profile, password);
+        loginAsProfile(profile, mode, nmr);
+        return true;
+      }
+    } catch (migErr) {
+      // migration to cloud failed; still allow offline/local login below
+    }
+  }
+
+  loginAsProfile(profile, mode, nmr);
+  return true;
+}
+
+function loginAsProfile(profile, mode, typedNmr) {
+  if (!profile || !profile.role) {
+    showAuthError("loginError", "No account found with this email. Please create an account first.");
+    return;
+  }
+  if (profile.role !== mode) {
     showAuthError("loginError", mode === "doctor"
       ? "This account is registered as a patient. Switch to Patient mode."
       : "This account is registered as a doctor. Switch to Doctor mode.");
     return;
   }
-
-  if (mode === "doctor" && (!nmr || nmr.toUpperCase() !== (user.nmr || "").toUpperCase())) {
+  if (mode === "doctor" && (!typedNmr || typedNmr.toUpperCase() !== (profile.nmr || "").toUpperCase())) {
     showAuthError("loginError", "Enter the correct NMR/Registration Number for this doctor account.");
     return;
   }
-
-  currentUser = { name: user.name, email: user.email, role: user.role || "patient", nmr: user.nmr || "" };
+  currentUser = { name: profile.name, email: profile.email, role: profile.role || "patient", nmr: profile.nmr || "" };
   localStorage.setItem(SESSION_KEY, JSON.stringify(currentUser));
   enterApp();
+}
+
+async function ensureLegacyRecord(email, profile, password) {
+  const users = getUsers();
+  if (users[email] && users[email].passwordHash) return;
+  const passwordHash = await hashPassword(password);
+  users[email] = {
+    name: profile.name || "",
+    email,
+    passwordHash,
+    role: profile.role || "patient",
+    nmr: profile.nmr || "",
+    createdAt: new Date().toISOString()
+  };
+  saveUsers(users);
 }
 
 async function handleRegister() {
@@ -246,22 +329,58 @@ async function handleRegister() {
     return;
   }
 
-  const users = getUsers();
-  if (users[email]) {
+  if (getUsers()[email]) {
     showAuthError("registerError", "An account with this email already exists. Try signing in.");
     return;
   }
 
-  const passwordHash = await hashPassword(password);
-  users[email] = {
-    name, email, passwordHash,
+  const profile = {
+    name,
+    email,
     role: mode,
     nmr: mode === "doctor" ? nmr.toUpperCase() : "",
     createdAt: new Date().toISOString()
   };
+
+  const fb = ensureFirebase();
+  if (fb) {
+    const existing = await getSharedProfile(email);
+    if (existing) {
+      showAuthError("registerError", "An account with this email already exists. Try signing in.");
+      return;
+    }
+    try {
+      const { createUserWithEmailAndPassword, updateProfile } = window.firebaseModules;
+      const cred = await createUserWithEmailAndPassword(fb.auth, email, password);
+      await updateProfile(cred.user, { displayName: name }).catch(() => {});
+    } catch (err) {
+      const code = err && err.code ? err.code : "";
+      if (code === "auth/email-already-in-use") {
+        showAuthError("registerError", "An account with this email already exists. Try signing in.");
+      } else if (code === "auth/weak-password") {
+        showAuthError("registerError", "Password is too weak. Use at least 6 characters.");
+      } else if (code === "auth/invalid-email") {
+        showAuthError("registerError", "Please enter a valid email address.");
+      } else {
+        showAuthError("registerError", (err && err.message) || "Registration failed. Please try again.");
+      }
+      return;
+    }
+    await upsertSharedProfile(profile);
+    await ensureLegacyRecord(email, profile, password);
+    currentUser = { name, email, role: mode, nmr: profile.nmr };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(currentUser));
+    showToast("Account created. Welcome!");
+    enterApp();
+    return;
+  }
+
+  const passwordHash = await hashPassword(password);
+  const users = getUsers();
+  users[email] = { ...profile, passwordHash };
   saveUsers(users);
 
-  currentUser = { name, email, role: mode, nmr: mode === "doctor" ? nmr.toUpperCase() : "" };
+  currentUser = { name, email, role: mode, nmr: profile.nmr };
   localStorage.setItem(SESSION_KEY, JSON.stringify(currentUser));
   showToast("Account created. Welcome!");
   enterApp();
@@ -317,6 +436,24 @@ function sendResetCode() {
   const email = normalizeEmail(document.getElementById("resetEmail").value);
   if (!email) {
     showAuthError("resetError", "Enter your registered email address.");
+    return;
+  }
+  const fb = ensureFirebase();
+  if (fb && window.firebaseModules.sendPasswordResetEmail) {
+    window.firebaseModules.sendPasswordResetEmail(fb.auth, email)
+      .then(() => {
+        document.getElementById("resetSentEmail").textContent = email;
+        document.getElementById("resetStepEmail").style.display = "none";
+        document.getElementById("resetStepSent").style.display = "block";
+      })
+      .catch(err => {
+        const code = err && err.code ? err.code : "";
+        if (code === "auth/user-not-found" || code === "auth/invalid-email") {
+          showAuthError("resetError", "No account found with this email. Check the spelling or register first.");
+        } else {
+          showAuthError("resetError", (err && err.message) || "Could not send the reset email. Try again.");
+        }
+      });
     return;
   }
   const users = getUsers();
@@ -421,6 +558,9 @@ function applyAdminUI() {
 
 function logout() {
   localStorage.removeItem(SESSION_KEY);
+  if (window.firebaseModules && window._fbAuth && window.firebaseModules.signOut) {
+    window.firebaseModules.signOut(window._fbAuth).catch(() => {});
+  }
   location.reload();
 }
 
@@ -1209,29 +1349,42 @@ function switchSettings(section, el) {
   if (section === "registered") renderRegisteredUsers();
 }
 
-function renderRegisteredUsers() {
+async function renderRegisteredUsers() {
   const list = document.getElementById("registeredUsersList");
   if (!list) return;
   if (!isAdmin()) {
     list.innerHTML = '<div style="padding:20px;color:var(--text-3);font-size:0.9rem;text-align:center;">Access restricted to the administrator.</div>';
     return;
   }
-  const users = getUsers();
-  const emails = Object.keys(users);
-  if (!emails.length) {
-    list.innerHTML = '<div style="padding:20px;color:var(--text-3);font-size:0.9rem;text-align:center;">No registered accounts on this browser/device yet.</div>';
+  let entries = null;
+  const fb = ensureFirebase();
+  if (fb) {
+    try {
+      const { getDocs, collection, query, orderBy } = window.firebaseModules;
+      const snap = await getDocs(query(collection(db, "users"), orderBy("updatedAt", "desc")));
+      const items = [];
+      snap.forEach(d => { items.push({ email: d.id, ...d.data() }); });
+      if (items.length) entries = items;
+    } catch (e) {}
+  }
+  if (!entries) {
+    const users = getUsers();
+    entries = Object.keys(users).map(email => ({ email: email || "", ...users[email] }));
+  }
+  if (!entries.length) {
+    list.innerHTML = '<div style="padding:20px;color:var(--text-3);font-size:0.9rem;text-align:center;">No registered accounts yet.</div>';
     return;
   }
-  list.innerHTML = emails.map(email => {
-    const u = users[email];
-    const joined = u.createdAt ? new Date(u.createdAt).toLocaleString() : "—";
+  list.innerHTML = entries.map(user => {
+    const email = user.email || "";
+    const joined = user.createdAt ? new Date(user.createdAt).toLocaleString() : "—";
     return `<div class="registered-user">
       <div class="patient-info">
-        <div class="patient-avatar">${(u.name || "?").charAt(0).toUpperCase()}</div>
+        <div class="patient-avatar">${(user.name || "?").charAt(0).toUpperCase()}</div>
         <div style="min-width:0;">
-          <strong style="font-size:0.92rem;display:block;">${escapeHtml(u.name || "Unknown")}</strong>
+          <strong style="font-size:0.92rem;display:block;">${escapeHtml(user.name || "Unknown")}</strong>
           <span style="font-size:0.8rem;color:var(--text-2);word-break:break-all;">${escapeHtml(email)}</span>
-          <span style="font-size:0.72rem;color:var(--text-3);display:block;">Role: ${u.role || "patient"} · Joined: ${joined}</span>
+          <span style="font-size:0.72rem;color:var(--text-3);display:block;">Role: ${user.role || "patient"} · Joined: ${joined}</span>
         </div>
       </div>
       <button class="btn-ghost small" style="color:var(--red);" onclick="deleteUser('${email.replace(/'/g, "\\'")}')">Delete</button>
@@ -1248,7 +1401,12 @@ function deleteUser(email) {
     showToast("The admin account cannot be deleted.");
     return;
   }
-  if (!confirm(`Delete account "${email}"? This cannot be undone.`)) return;
+  if (!confirm(`Delete account "${email}"? This removes their shared profile.`)) return;
+  if (db && window.firebaseModules) {
+    const { deleteDoc, doc } = window.firebaseModules;
+    deleteDoc(doc(db, "users", email)).catch(() => {});
+    showToast("Shared profile deleted. Remove the Firebase Auth user in console.firebase.google.com to fully revoke their account.");
+  }
   const users = getUsers();
   delete users[email];
   saveUsers(users);
@@ -1262,13 +1420,24 @@ function deleteAllUsers() {
     return;
   }
   if (!confirm("Delete ALL accounts except inventpraveenece2006@gmail.com? This cannot be undone.")) return;
-  if (!confirm("Are you absolutely sure? This wipes every other registered account on this browser only.")) return;
+  if (!confirm("Are you absolutely sure? This wipes every other registered account.")) return;
+  if (db && window.firebaseModules) {
+    const { getDocs, collection, deleteDoc, doc } = window.firebaseModules;
+    getDocs(collection(db, "users")).then(snap => {
+      const del = [];
+      snap.forEach(d => {
+        if (normalizeEmail(d.id) !== ADMIN_EMAIL) del.push(deleteDoc(doc(db, "users", d.id)));
+      });
+      return Promise.all(del);
+    }).catch(() => {});
+    showToast("Shared profiles cleared. Remove Firebase Auth users in console.firebase.google.com to fully revoke them.");
+  }
   const users = getUsers();
   const emails = Object.keys(users);
   let removed = 0;
-  emails.forEach(email => {
-    if (normalizeEmail(email) !== ADMIN_EMAIL) {
-      delete users[email];
+  emails.forEach(emailItem => {
+    if (normalizeEmail(emailItem) !== ADMIN_EMAIL) {
+      delete users[emailItem];
       removed++;
     }
   });
@@ -1280,11 +1449,17 @@ function deleteAllUsers() {
 function saveProfile() {
   const name = document.getElementById("settingsName").value;
   const email = document.getElementById("settingsEmail").value;
-  if (name) {
-    currentUser = { name, email };
-    setUserUI(name, email);
-    showToast("Profile saved");
+  if (!name) return;
+  currentUser = { ...currentUser, name, email: email || currentUser.email };
+  setUserUI(name, currentUser.email);
+  const fb = ensureFirebase();
+  if (fb) {
+    const { updateProfile } = window.firebaseModules;
+    if (window._fbAuth.currentUser) updateProfile(window._fbAuth.currentUser, { displayName: name }).catch(() => {});
+    upsertSharedProfile({ name, email: currentUser.email, role: currentUser.role, nmr: currentUser.nmr });
   }
+  localStorage.setItem(SESSION_KEY, JSON.stringify(currentUser));
+  showToast("Profile saved");
 }
 
 function saveAIConfig() {
@@ -1413,6 +1588,45 @@ function loadFirebaseSettings() {
   }
 }
 
+function ensureFirebase() {
+  if (!window.firebaseModules) return null;
+  const config = loadFirebaseConfig();
+  if (!config || !config.apiKey || !config.projectId) return null;
+  try {
+    const { initializeApp, getAuth, getFirestore } = window.firebaseModules;
+    if (!window._fbApp) window._fbApp = initializeApp(config);
+    if (!window._fbAuth) window._fbAuth = getAuth(window._fbApp);
+    if (!db) db = getFirestore(window._fbApp);
+    return { auth: window._fbAuth, db };
+  } catch (e) {
+    return null;
+  }
+}
+
+async function getSharedProfile(email) {
+  if (!db || !window.firebaseModules) return null;
+  try {
+    const { getDoc, doc } = window.firebaseModules;
+    const snap = await getDoc(doc(db, "users", email));
+    if (snap.exists()) return snap.data();
+  } catch (e) {}
+  return null;
+}
+
+async function upsertSharedProfile(profile) {
+  if (!db || !window.firebaseModules) return;
+  try {
+    const { setDoc, doc, serverTimestamp } = window.firebaseModules;
+    await setDoc(doc(db, "users", profile.email), {
+      name: profile.name || "",
+      email: profile.email,
+      role: profile.role || "patient",
+      nmr: profile.nmr || "",
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+  } catch (e) {}
+}
+
 async function initFirebase() {
   const config = loadFirebaseConfig();
   if (!config || !window.firebaseModules) {
@@ -1422,16 +1636,7 @@ async function initFirebase() {
   }
 
   try {
-    const { getFirestore } = window.firebaseModules;
-    if (!window._fbApp) {
-      const { initializeApp } = window.firebaseModules;
-      window._fbApp = initializeApp(config);
-    }
-    if (!window._fbAuth) {
-      const { getAuth } = window.firebaseModules;
-      window._fbAuth = getAuth(window._fbApp);
-    }
-    db = getFirestore(window._fbApp);
+    ensureFirebase();
     listenToPosts();
   } catch (err) {
     const s = document.getElementById("communityStatus");
